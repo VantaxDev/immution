@@ -13,7 +13,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 12
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Install Apache and PHP
         run: |
@@ -58,10 +58,32 @@ jobs:
 
       - name: Monitor, unblock and block behavior
         run: |
-          printf '%s\n' '<?php echo "ORIGIN_OK";' | sudo tee /var/www/html/immution-test.php >/dev/null
+          fail() {
+            printf 'FAIL: %s\n' "$1" >&2
+            printf '%s\n' '--- response body ---' >&2
+            test ! -f /tmp/immution-body || sudo sed -n '1,80p' /tmp/immution-body >&2
+            printf '%s\n' '--- Immution events ---' >&2
+            test ! -f /var/log/immution/events.csv || sudo tail -n 20 /var/log/immution/events.csv >&2
+            printf '%s\n' '--- Apache access log ---' >&2
+            test ! -f /var/log/apache2/access.log || sudo tail -n 20 /var/log/apache2/access.log >&2
+            printf '%s\n' '--- Immution service ---' >&2
+            sudo systemctl --no-pager --full status immution >&2 || true
+            exit 1
+          }
+
+          printf '%s\n' '<?php echo $_SERVER["REMOTE_ADDR"];' \
+            | sudo tee /var/www/html/immution-client-ip.php >/dev/null
           server_ip="$(hostname -I | awk '{print $1}')"
-          state_name="${server_ip//:/_}.json"
+          client_ip="$(curl --noproxy '*' -fsS "http://$server_ip/immution-client-ip.php")"
+          python3 -c 'import ipaddress,sys; ipaddress.ip_address(sys.argv[1])' "$client_ip" \
+            || fail "PHP returned an invalid REMOTE_ADDR: $client_ip"
+          test "$client_ip" != 127.0.0.1 && test "$client_ip" != ::1 \
+            || fail "The integration request reached Apache through loopback"
+
+          state_name="${client_ip//:/_}.json"
           now="$(date +%s)"
+          printf '%s\n' '<?php echo "ORIGIN_OK";' \
+            | sudo tee /var/www/html/immution-test.php >/dev/null
 
           seed_state() {
             printf '{"score":100,"banned":true,"requests":0,"errors_404":3,"probes":3,"last_score_ts":%s,"reasons":["test probe"]}\n' "$now" > /tmp/immution-test-state.json
@@ -70,26 +92,29 @@ jobs:
           }
 
           seed_state
-          status="$(curl --noproxy '*' -sS -o /tmp/monitor-body -w '%{http_code}' \
+          status="$(curl --noproxy '*' -sS -o /tmp/immution-body -w '%{http_code}' \
             "http://$server_ip/immution-test.php")"
-          test "$status" = 200
-          grep -q ORIGIN_OK /tmp/monitor-body
-          sudo grep -q would_block /var/log/immution/events.csv
+          test "$status" = 200 || fail "monitor mode returned HTTP $status instead of 200"
+          grep -q ORIGIN_OK /tmp/immution-body || fail "monitor mode did not execute the application"
+          sudo grep -q would_block /var/log/immution/events.csv \
+            || fail "monitor mode did not log would_block"
 
           for _ in {1..20}; do
             requests="$(sudo python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["requests"])' "/run/immution/$state_name")"
             [[ "$requests" -gt 0 ]] && break
             sleep 0.25
           done
-          test "$requests" -gt 0
-          test "$(stat -c '%a' "/run/immution/$state_name")" = 640
+          test "$requests" -gt 0 || fail "the daemon did not process Apache's request log"
+          test "$(stat -c '%a' "/run/immution/$state_name")" = 640 \
+            || fail "the state file does not have mode 0640"
 
-          sudo /opt/immution/immutionctl.py explain "$server_ip"
-          sudo /opt/immution/immutionctl.py unblock "$server_ip"
+          sudo /opt/immution/immutionctl.py explain "$client_ip"
+          sudo /opt/immution/immutionctl.py unblock "$client_ip"
           test ! -e "/run/immution/$state_name"
           curl --noproxy '*' -fsS "http://$server_ip/immution-test.php" | grep -q ORIGIN_OK
           sleep 1
-          test ! -e "/run/immution/$state_name"
+          test ! -e "/run/immution/$state_name" \
+            || fail "the daemon recreated state immediately after unblock"
 
           printf '%s\n' '{"score":60,"banned":true,"reasons":["IPv6 test"]}' > /tmp/immution-ipv6-state.json
           sudo install -o immution -g www-data -m 0640 \
@@ -101,12 +126,14 @@ jobs:
           sudo systemctl reload apache2
           now="$(date +%s)"
           seed_state
-          status="$(curl --noproxy '*' -sS -o /tmp/block-body -w '%{http_code}' \
+          status="$(curl --noproxy '*' -sS -o /tmp/immution-body -w '%{http_code}' \
             "http://$server_ip/immution-test.php")"
-          test "$status" = 403
-          ! grep -q ORIGIN_OK /tmp/block-body
-          grep -q 'Access temporarily limited' /tmp/block-body
-          sudo grep -q blocked /var/log/immution/events.csv
+          test "$status" = 403 || fail "block mode returned HTTP $status instead of 403"
+          ! grep -q ORIGIN_OK /tmp/immution-body || fail "block mode executed the application"
+          grep -q 'Access temporarily limited' /tmp/immution-body \
+            || fail "the 403 response did not contain Immution's block page"
+          sudo grep -q blocked /var/log/immution/events.csv \
+            || fail "block mode did not log blocked"
 
       - name: Uninstall leaves Apache healthy
         run: |
