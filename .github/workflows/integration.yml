@@ -63,9 +63,9 @@ jobs:
             printf '%s\n' '--- response body ---' >&2
             test ! -f /tmp/immution-body || sudo sed -n '1,80p' /tmp/immution-body >&2
             printf '%s\n' '--- Immution events ---' >&2
-            test ! -f /var/log/immution/events.csv || sudo tail -n 20 /var/log/immution/events.csv >&2
+            sudo test ! -f /var/log/immution/events.csv || sudo tail -n 20 /var/log/immution/events.csv >&2
             printf '%s\n' '--- Apache access log ---' >&2
-            test ! -f /var/log/apache2/access.log || sudo tail -n 20 /var/log/apache2/access.log >&2
+            sudo test ! -f /var/log/apache2/access.log || sudo tail -n 20 /var/log/apache2/access.log >&2
             printf '%s\n' '--- Immution service ---' >&2
             sudo systemctl --no-pager --full status immution >&2 || true
             exit 1
@@ -105,15 +105,15 @@ jobs:
             sleep 0.25
           done
           test "$requests" -gt 0 || fail "the daemon did not process Apache's request log"
-          test "$(stat -c '%a' "/run/immution/$state_name")" = 640 \
+          test "$(sudo stat -c '%a' "/run/immution/$state_name")" = 640 \
             || fail "the state file does not have mode 0640"
 
           sudo /opt/immution/immutionctl.py explain "$client_ip"
           sudo /opt/immution/immutionctl.py unblock "$client_ip"
-          test ! -e "/run/immution/$state_name"
+          sudo test ! -e "/run/immution/$state_name"
           curl --noproxy '*' -fsS "http://$server_ip/immution-test.php" | grep -q ORIGIN_OK
           sleep 1
-          test ! -e "/run/immution/$state_name" \
+          sudo test ! -e "/run/immution/$state_name" \
             || fail "the daemon recreated state immediately after unblock"
 
           printf '%s\n' '{"score":60,"banned":true,"reasons":["IPv6 test"]}' > /tmp/immution-ipv6-state.json
