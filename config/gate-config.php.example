@@ -1,0 +1,24 @@
+<?php
+/** Immution gate configuration. */
+return [
+    // Start here. Change to "block" only after reviewing would_block events.
+    'mode' => 'monitor',
+
+    'enabled' => true,
+    'runtime_dir' => '/run/immution',
+    'log_enabled' => true,
+    'log_file' => '/var/log/immution/events.csv',
+
+    // REMOTE_ADDR is always used. Configure Apache mod_remoteip when the
+    // server is behind a trusted proxy or CDN.
+    'whitelist' => [
+        // '203.0.113.10',
+        // '2001:db8::/32',
+    ],
+
+    'exclude_paths' => [
+        '#^/api/health(?:/|$)#',
+        '#^/cron(?:/|$)#',
+        // '#^/webhook(?:/|$)#',
+    ],
+];

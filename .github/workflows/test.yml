@@ -1,0 +1,66 @@
+name: tests
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  source:
+    name: Shell and current Python
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.x"
+      - name: Python tests
+        run: |
+          python3 -m unittest discover -s tests -v
+          python3 -m py_compile src/immution.py tools/*.py
+      - name: Shell syntax
+        run: bash -n scripts/*.sh
+      - name: Config validation
+        run: python3 src/immution.py --config config/daemon.json --check-config tests/fixtures/access.log
+
+  python-compatibility:
+    name: Python ${{ matrix.python-version }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.6", "3.8"]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run tests in the target runtime
+        run: |
+          docker run --rm \
+            -v "$GITHUB_WORKSPACE:/work" \
+            -w /work \
+            "python:${{ matrix.python-version }}-slim" \
+            sh -c 'python -m unittest discover -s tests -v && python -m py_compile src/immution.py tools/*.py'
+
+  php-compatibility:
+    name: PHP ${{ matrix.php-version }} gate
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        php-version: ["7.0", "7.4", "8.3", "8.4"]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install PHP ${{ matrix.php-version }}
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: ${{ matrix.php-version }}
+          coverage: none
+          tools: none
+      - name: Syntax and behavior
+        run: |
+          php --version
+          php -l src/gate.php
+          php -l config/gate-config.php.example
+          php -l experimental/gate_optimized.php
+          php -d display_errors=1 -d error_reporting=E_ALL tests/test_php_gate.php

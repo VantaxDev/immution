@@ -1,0 +1,124 @@
+name: ubuntu-integration
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  apache-mod-php:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Apache and PHP
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y apache2 libapache2-mod-php php-cli curl
+          sudo systemctl start apache2
+
+      - name: Run source checks
+        run: ./scripts/check-release.sh
+
+      - name: Existing auto_prepend_file stops before changes
+        run: |
+          printf '%s\n' '<?php // existing application bootstrap' > /tmp/existing-prepend.php
+          for conf_dir in /etc/php/*/apache2/conf.d; do
+            printf '%s\n' 'auto_prepend_file = /tmp/existing-prepend.php' \
+              | sudo tee "$conf_dir/98-existing-prepend.ini" >/dev/null
+          done
+          set +e
+          output="$(sudo ./scripts/install.sh 2>&1)"
+          status=$?
+          set -e
+          test "$status" -ne 0
+          grep -q 'Existing auto_prepend_file configuration detected' <<<"$output"
+          test ! -e /opt/immution
+          test ! -e /etc/systemd/system/immution.service
+          sudo rm -f /etc/php/*/apache2/conf.d/98-existing-prepend.ini
+          sudo apache2ctl configtest
+
+      - name: Fresh monitor-mode installation
+        run: |
+          sudo ./scripts/install.sh
+          sudo systemctl is-active --quiet immution
+          test "$(systemctl show immution -p User --value)" = immution
+          pid="$(systemctl show immution -p MainPID --value)"
+          test "$(ps -o user= -p "$pid" | xargs)" = immution
+          test "$(stat -c '%a' /run/immution)" = 750
+          test "$(stat -c '%U:%G' /run/immution)" = immution:www-data
+          sudo grep -q "'mode' => 'monitor'" /etc/immution/gate-config.php
+          sudo apache2ctl configtest
+          sudo systemctl restart apache2
+          sudo systemctl is-active --quiet apache2
+
+      - name: Monitor, unblock and block behavior
+        run: |
+          printf '%s\n' '<?php echo "ORIGIN_OK";' | sudo tee /var/www/html/immution-test.php >/dev/null
+          server_ip="$(hostname -I | awk '{print $1}')"
+          state_name="${server_ip//:/_}.json"
+          now="$(date +%s)"
+
+          seed_state() {
+            printf '{"score":100,"banned":true,"requests":0,"errors_404":3,"probes":3,"last_score_ts":%s,"reasons":["test probe"]}\n' "$now" > /tmp/immution-test-state.json
+            sudo install -o immution -g www-data -m 0640 \
+              /tmp/immution-test-state.json "/run/immution/$state_name"
+          }
+
+          seed_state
+          status="$(curl --noproxy '*' -sS -o /tmp/monitor-body -w '%{http_code}' \
+            "http://$server_ip/immution-test.php")"
+          test "$status" = 200
+          grep -q ORIGIN_OK /tmp/monitor-body
+          sudo grep -q would_block /var/log/immution/events.csv
+
+          for _ in {1..20}; do
+            requests="$(sudo python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["requests"])' "/run/immution/$state_name")"
+            [[ "$requests" -gt 0 ]] && break
+            sleep 0.25
+          done
+          test "$requests" -gt 0
+          test "$(stat -c '%a' "/run/immution/$state_name")" = 640
+
+          sudo /opt/immution/immutionctl.py explain "$server_ip"
+          sudo /opt/immution/immutionctl.py unblock "$server_ip"
+          test ! -e "/run/immution/$state_name"
+          curl --noproxy '*' -fsS "http://$server_ip/immution-test.php" | grep -q ORIGIN_OK
+          sleep 1
+          test ! -e "/run/immution/$state_name"
+
+          printf '%s\n' '{"score":60,"banned":true,"reasons":["IPv6 test"]}' > /tmp/immution-ipv6-state.json
+          sudo install -o immution -g www-data -m 0640 \
+            /tmp/immution-ipv6-state.json /run/immution/2001_db8__40.json
+          sudo /opt/immution/immutionctl.py explain 2001:db8::40
+          sudo /opt/immution/immutionctl.py unblock 2001:db8::40
+
+          sudo sed -i "s/'mode' => 'monitor'/'mode' => 'block'/" /etc/immution/gate-config.php
+          sudo systemctl reload apache2
+          now="$(date +%s)"
+          seed_state
+          status="$(curl --noproxy '*' -sS -o /tmp/block-body -w '%{http_code}' \
+            "http://$server_ip/immution-test.php")"
+          test "$status" = 403
+          ! grep -q ORIGIN_OK /tmp/block-body
+          grep -q 'Access temporarily limited' /tmp/block-body
+          sudo grep -q blocked /var/log/immution/events.csv
+
+      - name: Uninstall leaves Apache healthy
+        run: |
+          sudo ./scripts/uninstall.sh --purge
+          sudo systemctl restart apache2
+          sudo systemctl is-active --quiet apache2
+          test ! -e /opt/immution
+          test ! -e /etc/systemd/system/immution.service
+          test ! -e /etc/immution
+          test ! -e /run/immution
+          if find /etc/php -path '*/apache2/conf.d/99-immution.ini' -print -quit | grep -q .; then
+            exit 1
+          fi
+          server_ip="$(hostname -I | awk '{print $1}')"
+          curl --noproxy '*' -fsS "http://$server_ip/immution-test.php" | grep -q ORIGIN_OK

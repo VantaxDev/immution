@@ -1,0 +1,6 @@
+{
+  "auto_dir": "/var/log/apache2",
+  "logs": [],
+  "runtime_dir": "/run/immution",
+  "threshold": 50
+}

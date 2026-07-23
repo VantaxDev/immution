@@ -1,0 +1,39 @@
+name: Bug report
+description: Report a reproducible non-security bug without production data
+title: "[Bug]: "
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Do not use this form for vulnerabilities or attach real logs/IP data.
+        Follow SECURITY.md for private security reports.
+  - type: input
+    id: version
+    attributes:
+      label: Immution version
+      placeholder: 0.1.0-rc3
+    validations:
+      required: true
+  - type: dropdown
+    id: mode
+    attributes:
+      label: Gate mode
+      options:
+        - monitor
+        - block
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Reproduction
+      description: Use documentation-only IP ranges and sanitized paths.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected and actual result
+    validations:
+      required: true

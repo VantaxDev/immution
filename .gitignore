@@ -1,0 +1,14 @@
+__pycache__/
+*.py[cod]
+*.swp
+*.tmp
+.DS_Store
+.idea/
+.vscode/
+
+# Never commit operational data
+events.csv
+blocked.csv
+*.access.log
+*.error.log
+runtime/
