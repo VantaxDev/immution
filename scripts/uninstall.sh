@@ -14,24 +14,40 @@ if [[ ${EUID:-$(id -u)} -ne 0 ]]; then
     exit 1
 fi
 
-systemctl disable --now immution >/dev/null 2>&1 || true
-rm -f /etc/systemd/system/immution.service /etc/logrotate.d/immution
-
+# Detach and reload the gate before deleting gate.php. Reversing this order
+# can make PHP fail on a missing auto_prepend_file during uninstall.
+backup_dir="$(mktemp -d /tmp/immution-uninstall.XXXXXXXX)"
+restore_ini() {
+    status=$?
+    trap - ERR
+    for ini in "${ini_files[@]}"; do
+        if [[ -f "$backup_dir$ini" ]]; then
+            cp -a -- "$backup_dir$ini" "$ini"
+        fi
+    done
+    printf 'Apache detach failed; installation retained. Snapshot: %s\n' "$backup_dir" >&2
+    exit "$status"
+}
 shopt -s nullglob
 ini_files=(/etc/php/*/apache2/conf.d/99-immution.ini)
 shopt -u nullglob
+trap restore_ini ERR
 for ini in "${ini_files[@]}"; do
     if grep -q '^auto_prepend_file = /opt/immution/gate.php$' "$ini"; then
+        cp -a --parents -- "$ini" "$backup_dir"
         rm -f -- "$ini"
     fi
 done
 
+apache2ctl configtest
+systemctl reload apache2
+trap - ERR
+rm -rf -- "$backup_dir"
+
+systemctl disable --now immution
+rm -f /etc/systemd/system/immution.service /etc/logrotate.d/immution
 rm -rf /opt/immution
 systemctl daemon-reload
-
-if command -v apache2ctl >/dev/null 2>&1 && apache2ctl configtest; then
-    systemctl reload apache2 || true
-fi
 
 if $PURGE; then
     rm -rf /etc/immution /var/log/immution /run/immution

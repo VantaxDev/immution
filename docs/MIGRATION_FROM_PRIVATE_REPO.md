@@ -1,26 +1,25 @@
-# Move rc3 into the existing private repository
+# Update the public repository without replacing its history
 
-The uploaded ZIP contained a valid two-commit Git repository whose remote is on
-the owner's private Git service. Preserve that history; do not publish the
-original ZIP or its `.git` directory as a release download.
+The public repository is https://github.com/VantaxDev/immution.
+Do not copy `.git`, upload a source ZIP as the repository, force-push, or merge
+unrelated histories. Use a clean clone or your existing clean checkout.
 
-From a clean clone of the private repository:
-
-```bash
-git status
-git switch -c release/v0.1.0-rc3
-git rm -r .
-```
-
-Copy the contents of the reviewed `immution-v0.1.0-rc3/` directory into the
-repository root, then run:
+For this review, apply the supplied patch on a branch:
 
 ```bash
-git add .
-git status
+git status --short
+git switch -c review/immution-2026-09-15
+git apply --check /path/to/immution-review-e6d9ce5.patch
+git apply /path/to/immution-review-e6d9ce5.patch
 ./scripts/check-release.sh
-git commit -m "Prepare Immution 0.1.0 rc3"
+git add -A
+git diff --cached --check
+git commit -m "Review state lifecycle, installation and maintainer instructions"
+git push -u origin review/immution-2026-09-15
 ```
 
-Review the resulting commit before pushing the branch. Merge it only after the
-automated and human gates in `docs/RELEASE_CHECKLIST.md` pass.
+Start only with a clean checkout. The patch is based on e6d9ce5; if the check
+fails, stop and compare later changes rather than forcing it. Inspect staged
+changes before committing. Require both workflows green before merging.
+Do not exclude `*.log` when copying source: tests/fixtures/access.log is
+synthetic test data and must be included. Exclude actual production logs.

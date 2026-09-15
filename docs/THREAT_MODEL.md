@@ -29,7 +29,7 @@ that state as a member of the `www-data` group. PHP does not write ban state.
 ## Failure behaviour
 
 - missing, malformed or unreadable state: allow the request;
-- daemon unavailable: no new scoring; existing readable state may still apply;
+- daemon unavailable: no new scoring; existing readable state applies for at most one hour since its last update;
 - event log unavailable: enforcement can continue, but the logging error is not
   exposed to the visitor;
 - invalid configuration mode: fall back to monitor mode.

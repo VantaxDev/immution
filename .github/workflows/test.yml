@@ -21,7 +21,7 @@ jobs:
           python3 -m unittest discover -s tests -v
           python3 -m py_compile src/immution.py tools/*.py
       - name: Shell syntax
-        run: bash -n scripts/*.sh
+        run: for script in scripts/*.sh; do bash -n "$script"; done
       - name: Config validation
         run: python3 src/immution.py --config config/daemon.json --check-config tests/fixtures/access.log
 

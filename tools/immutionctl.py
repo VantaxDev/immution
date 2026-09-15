@@ -3,6 +3,7 @@
 
 import argparse
 import csv
+import fcntl
 import ipaddress
 import json
 import os
@@ -87,7 +88,11 @@ def command_explain(runtime_dir: str, ip: str) -> int:
 def command_unblock(runtime_dir: str, ip: str) -> int:
     path = state_path(runtime_dir, ip)
     try:
-        os.unlink(path)
+        # Same persistent lock as the daemon: wait for an in-flight write,
+        # then remove its result. Do not unlink .state.lock after releasing it.
+        with open(os.path.join(runtime_dir, ".state.lock"), "r") as handle:
+            fcntl.flock(handle, fcntl.LOCK_EX)
+            os.unlink(path)
     except FileNotFoundError:
         print(f"No active state for {ip}")
         return 1

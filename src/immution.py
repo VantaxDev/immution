@@ -12,6 +12,8 @@ Python package dependencies: none.
 import argparse
 import copy
 import glob
+import fcntl
+from contextlib import contextmanager
 import ipaddress
 import json
 import math
@@ -22,7 +24,6 @@ import subprocess
 import sys
 import threading
 import time
-from collections import defaultdict
 from datetime import datetime
 from typing import Any, Dict, Iterable, List, Optional, Tuple
 
@@ -125,9 +126,17 @@ def load_json_config(path: str) -> Dict[str, Any]:
         raise ValueError("configuration root must be a JSON object")
     if "logs" in data and not isinstance(data["logs"], list):
         raise ValueError("'logs' must be a JSON array")
-    if "threshold" in data and float(data["threshold"]) <= 0:
-        raise ValueError("'threshold' must be greater than zero")
+    if "threshold" in data:
+        validate_threshold(data["threshold"])
     return data
+
+
+def validate_threshold(value: Any) -> float:
+    """Reject NaN/infinity too: comparisons with NaN silently disable scoring."""
+    number = float(value)
+    if isinstance(value, bool) or not math.isfinite(number) or number <= 0:
+        raise ValueError("threshold must be a finite number greater than zero")
+    return number
 
 
 class Immution:
@@ -135,11 +144,12 @@ class Immution:
 
     def __init__(self, runtime_dir: str = DEFAULT_RUNTIME_DIR, threshold: float = DEFAULT_THRESHOLD):
         self.runtime_dir = runtime_dir
-        self.threshold = float(threshold)
+        self.threshold = validate_threshold(threshold)
         self.cache: Dict[str, Dict[str, Any]] = {}
         self.cache_lock = threading.Lock()
-        self.ip_locks: Dict[str, Any] = defaultdict(threading.Lock)
-        self.ip_locks_guard = threading.Lock()
+        # One transaction lock also coordinates CLI unblock and cleanup. This
+        # avoids an ever-growing per-IP lock table under a distributed scan.
+        self.transaction_lock = threading.Lock()
         self.running = True
 
         os.makedirs(self.runtime_dir, mode=0o750, exist_ok=True)
@@ -148,6 +158,12 @@ class Immution:
         except PermissionError:
             pass
 
+        # Create as the service user before a root CLI can run. The CLI opens
+        # this existing inode read-only so it cannot leave a root-owned lock.
+        lock_fd = os.open(os.path.join(self.runtime_dir, ".state.lock"),
+                          os.O_CREAT | os.O_RDWR, 0o640)
+        os.close(lock_fd)
+
         signal.signal(signal.SIGTERM, self._signal_handler)
         signal.signal(signal.SIGINT, self._signal_handler)
 
@@ -155,9 +171,18 @@ class Immution:
         print(f"[*] received signal {signum}; stopping")
         self.running = False
 
-    def _ip_lock(self, ip: str) -> threading.Lock:
-        with self.ip_locks_guard:
-            return self.ip_locks[ip]
+    @contextmanager
+    def state_transaction(self):
+        # Keep this inode for the runtime directory's lifetime. Deleting the
+        # lock file can create two independent locks for simultaneous writers.
+        # PHP uses atomic snapshots and never needs to acquire this lock.
+        with self.transaction_lock:
+            with open(os.path.join(self.runtime_dir, ".state.lock"), "a") as handle:
+                fcntl.flock(handle, fcntl.LOCK_EX)
+                try:
+                    yield
+                finally:
+                    fcntl.flock(handle, fcntl.LOCK_UN)
 
     @staticmethod
     def _filename(ip: str) -> str:
@@ -291,10 +316,14 @@ class Immution:
 
         # Clean traffic is not persisted. Existing records are still updated so
         # their score can decay and a temporary ban can be lifted.
+        # Cheap read-only fast path for ordinary traffic. Recheck under the
+        # transaction lock because unblock can remove a record in between.
         if not suspicious_candidate and not self.is_tracked(ip):
             return
 
-        with self._ip_lock(ip):
+        with self.state_transaction():
+            if not suspicious_candidate and not self.is_tracked(ip):
+                return
             now = time.time()
             data = self.load_ip_data(ip, now)
             previous_score = float(data.get("score", 0.0))
@@ -303,6 +332,14 @@ class Immution:
             data["last_score_ts"] = now
             data["requests"] = int(data.get("requests", 0)) + 1
             self._prune_windows(data, now)
+
+            # A 403 may be our own gate response, not another origin probe.
+            # Do not let enforcement feed its own score or refresh burst bonuses.
+            # The log cannot distinguish the two, so this also discounts origin
+            # 403s while already banned (including monitor mode).
+            if data.get("banned") and status == 403:
+                self.save_ip_data(ip, data)
+                return
 
             score_delta = 0.0
 
@@ -359,6 +396,12 @@ class Immution:
             self.save_ip_data(ip, data)
 
     def cleanup_old_files(self) -> None:
+        # Serialize expiry with request updates and external unblock: a stale
+        # read must never delete a freshly replaced state file.
+        with self.state_transaction():
+            self._cleanup_old_files_locked()
+
+    def _cleanup_old_files_locked(self) -> None:
         now = time.time()
         removed = 0
         try:
@@ -390,9 +433,11 @@ class Immution:
             except OSError:
                 continue
 
+        # Evict entries removed by CLI too, even if cleanup removed no files.
+        with self.cache_lock:
+            self.cache = {ip: data for ip, data in self.cache.items()
+                          if os.path.isfile(self.filepath(ip))}
         if removed:
-            with self.cache_lock:
-                self.cache.clear()
             print(f"[*] removed {removed} stale state files")
 
     def tail_single_log(self, log_path: str) -> None:
@@ -437,6 +482,10 @@ class Immution:
         last_cleanup = time.time()
         while self.running:
             time.sleep(1)
+            # A dead follower must not leave a misleading active service. Let
+            # systemd restart the daemon; tail -F handles ordinary log rotation.
+            if any(not thread.is_alive() for thread in threads):
+                raise RuntimeError("an Apache log follower stopped")
             if time.time() - last_cleanup >= CLEANUP_INTERVAL:
                 self.cleanup_old_files()
                 last_cleanup = time.time()
@@ -482,12 +531,16 @@ def main(argv: Optional[List[str]] = None) -> int:
     args = build_parser().parse_args(argv)
     try:
         config = load_json_config(args.config) if args.config else {}
-    except (OSError, ValueError, json.JSONDecodeError) as exc:
+    except (OSError, TypeError, ValueError, json.JSONDecodeError) as exc:
         print(f"[!] invalid configuration: {exc}", file=sys.stderr)
         return 2
 
     runtime_dir = args.runtime_dir or str(config.get("runtime_dir", DEFAULT_RUNTIME_DIR))
-    threshold = args.threshold if args.threshold is not None else float(config.get("threshold", DEFAULT_THRESHOLD))
+    try:
+        threshold = validate_threshold(args.threshold if args.threshold is not None else config.get("threshold", DEFAULT_THRESHOLD))
+    except (TypeError, ValueError) as exc:
+        print(f"[!] invalid threshold: {exc}", file=sys.stderr)
+        return 2
     log_paths = resolve_log_paths(args, config)
 
     if args.check_config:

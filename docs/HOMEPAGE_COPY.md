@@ -4,12 +4,14 @@
 
 **Immution**
 
-### Explainable abuse protection for small Apache servers.
+### Is abusive traffic overloading your VPS?
 
-Detect probing, repeated missing pages and suspicious request patterns from
-local access logs — without browser JavaScript or a heavyweight security stack.
+Detect repeated probes and missing-page scans from local Apache logs. After
+reviewing monitor results, stop flagged clients before your PHP application
+runs. Apache and the gate still consume resources; normal 200 floods and
+network-layer DDoS protection are outside this release.
 
-**Primary button:** Install in monitor mode
+**Primary button:** Install Immution free
 
 **Secondary button:** View on GitHub
 
@@ -46,3 +48,10 @@ Start in monitor mode. See what Immution would block before it blocks anything.
 
 Footer links: GitHub · Documentation · Security · Support the project ·
 Professional setup and tuning
+
+Project links: https://github.com/VantaxDev/immution and
+https://paypal.me/vantax. On the HTML homepage, keep the support address
+assembled in JavaScript from numeric character codes, per the owner’s request.
+Do not put a full contact address in HTML comments or static mailto attributes.
+Obfuscation only deters simple scrapers; do not describe it as bot-proof.
+Do not invent paid-support prices or service-level guarantees.

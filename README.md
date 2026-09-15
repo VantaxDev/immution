@@ -63,6 +63,19 @@ written JSON.
 
 ## Install
 
+On a disposable Ubuntu 24.04 server, install the prerequisites first:
+
+```bash
+sudo apt-get update
+sudo apt-get install -y git apache2 libapache2-mod-php php-cli python3
+sudo systemctl enable --now apache2
+git clone https://github.com/VantaxDev/immution.git
+cd immution
+./scripts/check-release.sh
+```
+
+Require green `tests` and `ubuntu-integration` workflows for the commit you
+install. Source checks alone do not validate the live Apache installation.
 Review `scripts/install.sh`, then run from the repository root:
 
 ```bash
@@ -77,7 +90,7 @@ The installer:
 4. enables the systemd service;
 5. adds the PHP `auto_prepend_file` configuration;
 6. validates Apache before reloading it;
-7. keeps Immution in monitor mode.
+7. starts **fresh installations** in monitor mode; upgrades preserve the existing mode.
 
 Check the result:
 
@@ -85,8 +98,12 @@ Check the result:
 sudo systemctl status immution
 sudo journalctl -u immution -f
 sudo /opt/immution/immutionctl.py status
-sudo tail -f /var/log/immution/events.csv
+sudo tail -F /var/log/immution/events.csv
 ```
+
+The events file is created only when a subsequent PHP request encounters a
+flagged IP. Its absence does not prove the detector works or has failed.
+`status` reports scored addresses, not necessarily requests actually blocked.
 
 After the observation period, generate a privacy-conscious summary (IP
 addresses and query strings are not printed):
@@ -95,8 +112,10 @@ addresses and query strings are not printed):
 sudo /opt/immution/immutionctl.py report
 ```
 
-The report reduces the data to review but cannot decide whether an application
-path is legitimate. Classify its top paths before enabling block mode.
+The default report reads only the current events.csv, not rotated files.
+Its paths can still contain identifiers or secrets; review before sharing.
+It reduces the data to review but cannot decide whether an application
+path is legitimate, nor prove false positives are absent. Classify its top paths before enabling block mode.
 
 ## Review monitor-mode decisions
 
@@ -128,15 +147,17 @@ do not publish real event logs in bug reports.
 Run in monitor mode for at least several days on the target workload. Review
 false positives, add necessary exclusions and whitelist only trusted addresses.
 
-Then edit `/etc/immution/gate-config.php`:
+Then run `sudoedit /etc/immution/gate-config.php` and set:
 
 ```php
 'mode' => 'block',
 ```
 
-Reload Apache:
+Validate the PHP configuration and reload Apache:
 
 ```bash
+sudo php -l /etc/immution/gate-config.php
+sudo apache2ctl configtest
 sudo systemctl reload apache2
 ```
 
@@ -148,6 +169,9 @@ Return to monitor mode immediately if legitimate traffic is affected.
 sudo /opt/immution/immutionctl.py unblock 192.0.2.10
 ```
 
+Unblock waits for an in-flight daemon write and removes the resulting state.
+A later suspicious request can start a new score; this is not a whitelist.
+
 ## Reverse proxies and CDNs
 
 The PHP gate intentionally trusts only `REMOTE_ADDR`. It does not accept
@@ -156,7 +180,12 @@ can spoof those headers.
 
 When Apache is behind a trusted proxy or CDN, configure `mod_remoteip` so both
 `REMOTE_ADDR` and the first field of the access log contain the same effective
-client address. Do not enable block mode until this has been verified.
+client address. Use `%a` as the first field in a dedicated Combined access log and trust only
+explicit proxy addresses. The parser does not accept Apache's default
+`other_vhosts_access.log` format with a virtual-host prefix. Set explicit
+`logs` in daemon.json to client-IP-first Combined files, avoiding duplicates.
+New log files are discovered at startup; restart after adding a virtual host.
+Do not enable block mode until the gate/log address match has been verified.
 
 ## Configuration
 
@@ -175,7 +204,7 @@ Gate settings: `/etc/immution/gate-config.php`
 
 - `mode`: `monitor` or `block`;
 - `whitelist`: exact IPv4/IPv6 addresses or CIDR ranges;
-- `exclude_paths`: anchored regular expressions;
+- `exclude_paths`: anchored regular expressions (gate bypass only; the daemon still scores these requests);
 - `log_enabled` and `log_file`.
 
 After daemon changes:
@@ -240,3 +269,15 @@ Immution is available under the [MIT License](LICENSE). The supported product is
 not feature-gated: professional installation, tuning and operational support
 are separate services. Project information is available at
 [immution.com](https://www.immution.com/).
+
+## Operational limits and developer notes
+
+Detection follows completed access-log records, so first requests already reach
+Apache and the application. The gate only intercepts PHP, consumes some CPU,
+and does not stop bandwidth exhaustion or ordinary HTTP 200 floods. Shared IPs
+share one score across all configured logs and virtual hosts. Googlebot is not
+authenticated or automatically whitelisted.
+
+Read [the maintainer guide](docs/MAINTAINERS.md) before changing locking,
+scoring or installation. Read [the review](docs/REVIEW_2026-09-15.md) for
+remaining limitations and what was actually tested.

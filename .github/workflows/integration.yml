@@ -18,7 +18,7 @@ jobs:
       - name: Install Apache and PHP
         run: |
           sudo apt-get update
-          sudo apt-get install -y apache2 libapache2-mod-php php-cli curl
+          sudo apt-get install -y apache2 libapache2-mod-php php-cli curl logrotate
           sudo systemctl start apache2
 
       - name: Run source checks
@@ -86,7 +86,7 @@ jobs:
             | sudo tee /var/www/html/immution-test.php >/dev/null
 
           seed_state() {
-            printf '{"score":100,"banned":true,"requests":0,"errors_404":3,"probes":3,"last_score_ts":%s,"reasons":["test probe"]}\n' "$now" > /tmp/immution-test-state.json
+            printf '{"score":100,"banned":true,"requests":0,"errors_404":3,"probes":3,"updated":%s,"last_score_ts":%s,"reasons":["test probe"]}\n' "$now" "$now" > /tmp/immution-test-state.json
             sudo install -o immution -g www-data -m 0640 \
               /tmp/immution-test-state.json "/run/immution/$state_name"
           }
@@ -132,8 +132,39 @@ jobs:
           ! grep -q ORIGIN_OK /tmp/immution-body || fail "block mode executed the application"
           grep -q 'Access temporarily limited' /tmp/immution-body \
             || fail "the 403 response did not contain Immution's block page"
-          sudo grep -q blocked /var/log/immution/events.csv \
+          sudo grep -q ',blocked,' /var/log/immution/events.csv \
             || fail "block mode did not log blocked"
+
+      - name: Upgrade preserves block mode and failure restores files
+        run: |
+          sudo ./scripts/install.sh | tee /tmp/immution-upgrade-output
+          grep -q 'Configured mode: block' /tmp/immution-upgrade-output
+          sudo cp /etc/immution/gate-config.php /tmp/immution-before-config
+          sudo cp /opt/immution/gate.php /tmp/immution-before-gate
+          mkdir -p /tmp/immution-fail-bin
+          cat > /tmp/immution-fail-bin/systemctl <<'SH'
+          #!/usr/bin/env bash
+          # Inject failure only at restart; rollback may still start the unit.
+          if [[ "$1" == restart && "${2:-}" == immution ]]; then
+            exit 1
+          fi
+          exec /usr/bin/systemctl "$@"
+          SH
+          chmod +x /tmp/immution-fail-bin/systemctl
+          if sudo env PATH="/tmp/immution-fail-bin:$PATH" ./scripts/install.sh; then
+            echo 'FAIL: injected restart failure was ignored' >&2
+            exit 1
+          fi
+          sudo cmp /tmp/immution-before-config /etc/immution/gate-config.php
+          sudo cmp /tmp/immution-before-gate /opt/immution/gate.php
+          sudo systemctl is-active --quiet immution
+          sudo apache2ctl configtest
+
+      - name: Rotate the PHP event log
+        run: |
+          sudo logrotate -f /etc/logrotate.d/immution
+          sudo test -f /var/log/immution/events.csv.1
+          test "$(sudo stat -c '%a' /var/log/immution/events.csv)" = 640
 
       - name: Uninstall leaves Apache healthy
         run: |

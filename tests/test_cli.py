@@ -19,6 +19,7 @@ SPEC.loader.exec_module(immutionctl)
 class CliTests(unittest.TestCase):
     def setUp(self):
         self.tempdir = tempfile.TemporaryDirectory()
+        Path(self.tempdir.name, ".state.lock").touch()
 
     def tearDown(self):
         self.tempdir.cleanup()

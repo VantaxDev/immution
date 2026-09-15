@@ -19,7 +19,7 @@ printf '%s\n' '[2/6] Python compilation'
 python3 -m py_compile src/immution.py tools/*.py
 
 printf '%s\n' '[3/6] Shell syntax'
-bash -n scripts/*.sh
+for script in scripts/*.sh; do bash -n "$script"; done
 
 printf '%s\n' '[4/6] PHP syntax'
 php -l src/gate.php

@@ -1,4 +1,6 @@
 /var/log/immution/*.csv {
+    # Parent directory is group-writable for PHP event logging.
+    su www-data www-data
     daily
     rotate 30
     compress

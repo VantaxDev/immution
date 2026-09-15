@@ -1,6 +1,6 @@
 <?php
 /**
- * Immution PHP gate v0.1.0-rc3.
+ * Immution PHP gate (PHP 7.0+).
  *
  * Loaded with auto_prepend_file. The gate only reads state produced by the
  * daemon. It defaults to monitor mode: events are logged but requests are not
@@ -65,7 +65,16 @@ function immution_client_ip()
     // behind a reverse proxy/CDN, configure mod_remoteip so REMOTE_ADDR and the
     // first field in the access log contain the same effective client IP.
     $ip = $_SERVER['REMOTE_ADDR'] ?? '';
-    return filter_var($ip, FILTER_VALIDATE_IP) !== false ? $ip : null;
+    if (filter_var($ip, FILTER_VALIDATE_IP) === false) {
+        return null;
+    }
+    // Match Python ipaddress spelling, including mapped IPv6 (hex tail).
+    $canonical = inet_ntop(inet_pton($ip));
+    if (strpos($canonical, ':') !== false && strpos($canonical, '.') !== false) {
+        $bytes = unpack('n8', inet_pton($ip));
+        $canonical = substr($canonical, 0, strrpos($canonical, ':') + 1) . dechex($bytes[7]) . ':' . dechex($bytes[8]);
+    }
+    return $canonical;
 }
 
 function immution_ip_filename(string $ip): string
@@ -115,7 +124,7 @@ function immution_is_whitelisted(string $ip, array $entries): bool
         if (!is_string($entry)) {
             continue;
         }
-        if ($ip === $entry || (strpos($entry, '/') !== false && immution_ip_in_cidr($ip, $entry))) {
+        if (@inet_pton($ip) === @inet_pton($entry) || (strpos($entry, '/') !== false && immution_ip_in_cidr($ip, $entry))) {
             return true;
         }
     }
@@ -147,7 +156,13 @@ function immution_load_state(string $ip, string $runtimeDir)
         return null;
     }
     $data = json_decode($content, true);
-    return is_array($data) ? $data : null;
+    // A stopped daemon must not leave a permanent ban. Fail open for old or
+    // malformed records; this TTL mirrors SCORE_TTL in src/immution.py.
+    if (!is_array($data) || !isset($data['updated']) || !is_numeric($data['updated'])) {
+        return null;
+    }
+    $age = time() - (float)$data['updated'];
+    return $age >= -60 && $age <= 3600 ? $data : null;
 }
 
 function immution_bounded_header(string $name, int $limit): string
@@ -178,14 +193,19 @@ function immution_log_event(string $action, string $ip, array $data, array $conf
     }
 
     $file = $config['log_file'];
-    $newFile = !file_exists($file) || filesize($file) === 0;
     $handle = @fopen($file, 'ab');
     if ($handle === false) {
         return;
     }
 
+    // The directory is restricted too; keep newly created logs consistent
+    // with logrotate, rather than inheriting Apache's process umask.
+    @chmod($file, 0640);
     if (flock($handle, LOCK_EX)) {
-        if ($newFile) {
+        // Check after acquiring the lock: two first requests can both observe
+        // an empty file before locking and otherwise duplicate the CSV header.
+        $stat = fstat($handle);
+        if ($stat !== false && $stat['size'] === 0) {
             fputcsv($handle, [
                 'timestamp', 'action', 'ip', 'host', 'request_uri', 'score',
                 'requests', 'errors_404', 'probes', 'user_agent', 'reasons',

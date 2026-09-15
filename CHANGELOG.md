@@ -1,5 +1,14 @@
 # Changelog
 
+## Unreleased — source review 2026-09-15
+
+- Coordinate scoring, cleanup and unblock; prevent 403 score feedback.
+- Expire stale PHP state, normalize IPv6 and serialize CSV header creation.
+- Validate thresholds and detect stopped log followers.
+- Correct upgrade mode output, rollback, removal order and logrotate identity.
+- Add maintainer contracts, targeted regressions and clearer installation limits.
+- See docs/REVIEW_2026-09-15.md for completed and outstanding validation.
+
 ## 0.1.0-rc4 — 2026-07-23
 
 ### Compatibility

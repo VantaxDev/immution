@@ -18,7 +18,8 @@ usage() {
 while (($#)); do
     case "$1" in
         --mode)
-            MODE="${2:-}"
+            [[ $# -ge 2 ]] || { usage >&2; exit 2; }
+            MODE="$2"
             shift 2
             ;;
         -h|--help)
@@ -62,7 +63,7 @@ for file in "${required_files[@]}"; do
     fi
 done
 
-for command in apache2ctl getent install php python3 systemctl useradd usermod; do
+for command in apache2ctl getent install php python3 systemctl useradd usermod mktemp cp; do
     if ! command -v "$command" >/dev/null 2>&1; then
         printf 'Required command not found: %s\n' "$command" >&2
         exit 1
@@ -94,6 +95,12 @@ if ! getent group adm >/dev/null; then
     printf 'Required group not found: adm\n' >&2
     exit 1
 fi
+
+# Stale config directories are not proof that Apache actually loads mod_php.
+apache2ctl -M 2>/dev/null | grep -Eq 'php[0-9]*_module' || {
+    printf 'Apache must have mod_php loaded; PHP-FPM requires manual setup.\n' >&2
+    exit 1
+}
 
 shopt -s nullglob
 php_conf_dirs=(/etc/php/*/apache2/conf.d)
@@ -129,23 +136,51 @@ timestamp="$(date +%Y%m%d-%H%M%S)"
 backup_dir=""
 service_backup=""
 created_ini=()
+# Snapshot overwritten configuration too. Rollback must restore the previous
+# prepend file before reloading Apache; otherwise every PHP request can fail.
+transaction_dir="$(mktemp -d /tmp/immution-install.XXXXXXXX)"
+restore_targets=("$CONFIG_DIR" "$SERVICE_FILE" "$LOGROTATE_FILE")
+for conf_dir in "${php_conf_dirs[@]}"; do
+    restore_targets+=("$conf_dir/99-immution.ini")
+done
+for target in "${restore_targets[@]}"; do
+    if [[ -e "$target" || -L "$target" ]]; then
+        cp -a --parents -- "$target" "$transaction_dir"
+    fi
+done
+was_active=false
+was_enabled=false
+systemctl is-active --quiet immution && was_active=true
+systemctl is-enabled --quiet immution && was_enabled=true
 
 rollback() {
     status=$?
     trap - ERR
     printf 'Installation failed; rolling back.\n' >&2
-    for ini in "${created_ini[@]}"; do
-        rm -f -- "$ini"
+    systemctl stop immution >/dev/null 2>&1 || true
+    for target in "${restore_targets[@]}"; do
+        rm -rf -- "$target"
+        if [[ -e "$transaction_dir$target" || -L "$transaction_dir$target" ]]; then
+            cp -a -- "$transaction_dir$target" "$target"
+        fi
     done
-    if [[ -n "$service_backup" && -f "$service_backup" ]]; then
-        cp -a -- "$service_backup" "$SERVICE_FILE"
-        rm -f -- "$service_backup"
-    fi
     if [[ -n "$backup_dir" && -d "$backup_dir" ]]; then
         rm -rf -- "$INSTALL_DIR"
         mv -- "$backup_dir" "$INSTALL_DIR"
+    elif [[ -z "$backup_dir" ]]; then
+        rm -rf -- "$INSTALL_DIR"
     fi
     systemctl daemon-reload >/dev/null 2>&1 || true
+    if $was_enabled; then
+        systemctl enable immution >/dev/null 2>&1 || true
+    else
+        systemctl disable immution >/dev/null 2>&1 || true
+    fi
+    if $was_active; then
+        systemctl start immution >/dev/null 2>&1 || true
+    fi
+    apache2ctl configtest && systemctl reload apache2 || true
+    printf 'Rollback snapshot retained at %s for inspection.\n' "$transaction_dir" >&2
     exit "$status"
 }
 trap rollback ERR
@@ -201,13 +236,18 @@ if ! systemctl is-active --quiet immution; then
     false
 fi
 
+# Existing configuration wins on upgrades; never claim monitor solely from
+# the command-line default when the preserved gate is actually blocking.
+MODE="$(php -r '$c = require "/etc/immution/gate-config.php"; echo isset($c["mode"]) && $c["mode"] === "block" ? "block" : "monitor";')"
+
 trap - ERR
+rm -rf -- "$transaction_dir"
 if [[ -n "$service_backup" ]]; then
     rm -f -- "$service_backup"
 fi
 
 printf '\nImmution installed successfully.\n'
-printf 'Mode: %s\n' "$MODE"
+printf 'Configured mode: %s\n' "$MODE"
 printf 'Events: /var/log/immution/events.csv\n'
 printf 'Service: systemctl status immution\n'
 printf 'Explain: sudo /opt/immution/immutionctl.py status\n'

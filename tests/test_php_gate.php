@@ -37,6 +37,28 @@ immution_test_assert(
 );
 immution_test_assert(immution_csv_safe('=2+2') === "'=2+2", 'CSV formula prefix');
 
+// Both runtimes must resolve equivalent IPv6 spellings to the same file.
+$_SERVER['REMOTE_ADDR'] = '2001:0DB8:0000:0000:0000:0000:0000:0001';
+immution_test_assert(immution_client_ip() === '2001:db8::1', 'IPv6 canonicalization');
+$_SERVER['REMOTE_ADDR'] = '::ffff:192.0.2.10';
+immution_test_assert(immution_client_ip() === '::ffff:c000:20a', 'mapped IPv6 matches Python');
+immution_test_assert(immution_is_whitelisted('2001:db8::1', ['2001:0db8:0:0:0:0:0:1']), 'exact IPv6 whitelist equivalence');
+
+$runtime = sys_get_temp_dir() . '/immution-state-' . uniqid();
+mkdir($runtime, 0700);
+$stateFile = $runtime . '/192.0.2.10.json';
+foreach ([
+    ['record' => ['banned' => true, 'updated' => time()], 'valid' => true],
+    ['record' => ['banned' => true, 'updated' => time() - 3601], 'valid' => false],
+    ['record' => ['banned' => true], 'valid' => false],
+    ['record' => ['banned' => true, 'updated' => time() + 120], 'valid' => false],
+] as $case) {
+    file_put_contents($stateFile, json_encode($case['record']));
+    immution_test_assert((immution_load_state('192.0.2.10', $runtime) !== null) === $case['valid'], 'state freshness');
+}
+unlink($stateFile);
+rmdir($runtime);
+
 $logFile = tempnam(sys_get_temp_dir(), 'immution-php-');
 immution_test_assert($logFile !== false, 'temporary log creation');
 @unlink($logFile);

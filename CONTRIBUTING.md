@@ -8,7 +8,7 @@ Before opening a pull request:
 ```bash
 python3 -m unittest discover -s tests -v
 python3 -m py_compile src/immution.py tools/*.py
-bash -n scripts/*.sh
+for script in scripts/*.sh; do bash -n "$script"; done
 ```
 
 Keep each change small and explain its effect on false positives, runtime
@@ -21,3 +21,8 @@ permissions and reversibility. New scoring rules require:
 
 Never submit production logs or personal data. Use the anonymized fixtures and
 documentation-only network ranges.
+
+Keep supported sources compatible with Python 3.6 and PHP 7.0. Run
+`./scripts/check-release.sh` and require both GitHub workflows on the exact
+change. Read `docs/MAINTAINERS.md`; do not infer live integration success from
+unit tests or a syntax parser.
