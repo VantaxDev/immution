@@ -30,6 +30,8 @@ No claim of complete history if logs were deleted, logging failed or retention
 excluded records. Multiline/malformed CSV records are skipped visibly, partial
 trailing records wait for newline. Empty/wrong headers and read failures must
 not be mistaken for healthy no-traffic conditions. No demo substitution.
+Timestamps that overflow during timezone conversion are counted as malformed
+records and skipped without interrupting healthy records in the same source.
 Corrupt gzip/DEFLATE rotations report READ ERROR without stopping ingestion
 from healthy sources. Counts remain potentially incomplete while that warning
 is present; the reader does not repair or modify source files.
