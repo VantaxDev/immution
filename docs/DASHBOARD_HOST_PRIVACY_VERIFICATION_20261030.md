@@ -38,6 +38,13 @@ label changes; scoring, gate, permissions and event parsing do not change.
 - `./scripts/check-release.sh`: PASS, including 14 core tests, Python
   compilation, shell/PHP syntax, PHP smoke test and systemd unit validation.
 - `git diff --check`: PASS.
+- Compatibility with PR #4 checked in a disposable archive of a computed tree
+  (`git merge-tree --write-tree`, no branch/merge commit created): no conflicts;
+  all 45 combined dashboard tests PASS, including PTY, timeframe and export
+  regressions. The first compatibility check found a test-only assumption that
+  monitor-only hostnames always appear in the dump; PR #4 intentionally groups
+  them in Other. The new regression now verifies the filtered summary instead,
+  retaining the numeric-label output checks. No implementation change needed.
 
 CI evidence for the published head is recorded in the workspace automation
 report, not inferred from local tests. No live server integration, merge,
