@@ -21,6 +21,38 @@ Python or PHP package dependencies.
 Immution is not network-level DDoS mitigation, a vulnerability scanner, a bot
 identity service or a replacement for backups and patch management.
 
+## Experimental terminal dashboard
+
+A separate **read-only** Python 3.9+ dashboard is available in this source
+branch under experimental/dashboard; it is not bundled by the v0.1.0-rc4
+installer or offered as a new release. No engine rules or services are changed.
+Use a checkout containing these files, with system Europe/Rome timezone data.
+No pip dependencies are needed; the interactive Linux UI uses standard curses.
+
+    # From the repository root; use an account allowed to read the chosen log.
+    python3 experimental/dashboard/live.py --log /path/to/events.csv --once
+    python3 experimental/dashboard/live.py --log /path/to/events.csv --interval 5
+    # Offline demonstration with explicitly synthetic data:
+    python3 experimental/dashboard/terminal.py --demo --once
+
+Run directly from source: the core installer does **not** install an
+immution-dashboard command. Repeat --log for additional event CSV files.
+Refresh runs only while the terminal is open. Keys: Tab/n/p claimed-host
+filter, 0 all, ? help, j/k scroll, r refresh, q quit.
+Numbered panels preserve your terminal foreground and background. Blocked and
+monitor-only events stay separate; claimed Host values are untrusted, and IP
+counts are not bot counts. Missing data and coverage limits remain visible.
+
+**MB saved is N/D by default**, not measured from event counts. Only explicit
+--baseline-bytes N and --block-bytes N enable a labelled estimate:
+blocked * (baseline - block) / 1,000,000 decimal MB. Large three-line digits
+appear when space allows; negative estimates are retained. No assumed baseline.
+See [dashboard usage and limitations](experimental/dashboard/LIVE.md).
+
+    python3 -m unittest discover -s experimental/dashboard -v
+    python3 -m unittest discover -s tests -v
+    ./scripts/check-release.sh
+
 ## Safety properties
 
 - **Monitor first:** a new installation writes `would_block` events but allows
