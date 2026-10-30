@@ -11,6 +11,7 @@ import re
 import subprocess
 import sys
 import time
+import zlib
 from datetime import datetime, timezone
 from zoneinfo import ZoneInfo
 from collections import Counter, defaultdict
@@ -110,7 +111,7 @@ class Reader:
                 break
             try:
                 data = state['file'].read(remaining)
-            except (OSError, EOFError):
+            except (OSError, EOFError, zlib.error):
                 self.warnings.append('READ ERROR source ' + str(state['source'] + 1))
                 continue
             remaining -= len(data)

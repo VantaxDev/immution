@@ -101,6 +101,20 @@ class LiveTests(unittest.TestCase):
         self.r.refresh(NOW)
         self.assertEqual(self.r.issues['copytruncate_coverage_uncertain'],1)
 
+    def test_corrupt_gzip_does_not_stop_active_source(self):
+        self.p.write_bytes(encoded([row()]))
+        compressed = bytearray(gzip.compress(encoded([row()])))
+        compressed[10] = 7  # Reserved DEFLATE block type after the gzip header.
+        Path(str(self.p) + '.1.gz').write_bytes(compressed)
+        self.r.refresh(NOW)
+        self.assertEqual(self.r.summary()['counts']['blocked'], 1)
+        self.assertIn('READ ERROR source 1', self.r.warnings)
+        with self.p.open('ab') as handle:
+            handle.write(encoded([row(action='would_block')], header=False))
+        self.r.refresh(NOW)
+        self.assertEqual(self.r.summary()['counts'], {'blocked': 1, 'would_block': 1})
+        self.assertIn('READ ERROR source 1', self.r.warnings)
+
     def test_health_unknown_and_sanitization(self):
         with patch.object(live.subprocess,'run',side_effect=OSError):
             self.assertEqual(live.health(),'immution=unknown apache2=unknown')
