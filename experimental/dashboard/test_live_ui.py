@@ -59,9 +59,9 @@ class LayoutTests(unittest.TestCase):
             for host in ('all', 'example.invalid', 'absent.invalid'):
                 numeric = live.panel_rows(self.r, host, 'unknown', width, False, 50000, 2000)
                 self.assertTrue(all(len(text) <= width for text, _ in numeric))
-        rows = live.panel_rows(self.r, 'example.invalid', 'unknown', 100, True)
+        rows = live.panel_rows(self.r, 'example.invalid', 'unknown', 100, False)
         self.assertTrue(any(text.startswith('> example.invalid') and style == 'selected' for text, style in rows))
-        self.assertIn('HELP / READ ONLY', '\n'.join(text for text, _ in rows))
+        self.assertIn('HELP / READ ONLY', '\n'.join(text for text, _ in live.panel_rows(self.r, 'example.invalid', 'unknown', 100, True)))
 
 
 class PtyTests(unittest.TestCase):
@@ -83,7 +83,7 @@ class PtyTests(unittest.TestCase):
                 with self.subTest(term=term):
                     master, slave = pty.openpty()
                     original = termios.tcgetattr(slave)
-                    fcntl.ioctl(slave, termios.TIOCSWINSZ, struct.pack('HHHH', 30, 100, 0, 0))
+                    fcntl.ioctl(slave, termios.TIOCSWINSZ, struct.pack('HHHH', 24, 80, 0, 0))
                     proc = subprocess.Popen([sys.executable, str(Path(live.__file__)), '--log', str(path)], stdin=slave, stdout=slave, stderr=slave, env=dict(os.environ, TERM=term))
                     output = bytearray()
                     def receive(expected=None, seconds=0.3):
@@ -102,6 +102,9 @@ class PtyTests(unittest.TestCase):
                         if term != 'dumb':
                             os.write(master, b'n'); receive(b'example.invalid')
                             os.write(master, b'?'); receive(b'HELP')
+                            for key, label in ((b'2', b'yesterday'), (b'3', b'last7'),
+                                               (b'4', b'previous-week'), (b't', b'today')):
+                                os.write(master, key); receive(label)
                             os.write(master, b'r'); receive()
                             for height, width in ((8, 24), (2, 10), (1, 1), (40, 120)):
                                 fcntl.ioctl(slave, termios.TIOCSWINSZ, struct.pack('HHHH', height, width, 0, 0))

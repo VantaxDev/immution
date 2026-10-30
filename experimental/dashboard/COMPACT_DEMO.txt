@@ -1,0 +1,54 @@
+SYNTHETIC DEMO ONLY - not production metrics
+80x24 viewport (79 printable columns, 22 rows)
+
+IMMUTION / READ ONLY | today
+[2026-10-30, 2026-10-31) Europe/Rome
+As of 2026-10-30T18:00:00+01:00 | end exclusive
+Scope: all [claimed Host; UNTRUSTED]
+MB RISPARMIATI: N/D
+No response-byte evidence / baseline. Not measurable from event counts.
+TOTAL BLOCKED 35 | unique IPs 6
+TOTAL MONITOR 26 | unique IPs 5 (allowed; not blocked)
+TOP CLAIMED HOST / UNTRUSTED (blocked records, not protected sites)
+NAME (~ shortened)                                           BLOCKED  MONITOR
+  alpha.invalid                                                   12        2
+  beta.invalid                                                     8        1
+  gamma.invalid                                                    6        0
+  delta.invalid                                                    4        0
+  epsilon.invalid                                                  3        1
+OTHER 2 hosts incl hidden/monitor-only: B 2 | M 22
+Selftest excluded B=1 M=0 (spoofable) | IPs != bots
+History UNKNOWN: event evidence 1/1 dates (idle OR gaps on others)
+Warnings (0): none
+Issues 0 | future excluded 0 | details: --once / --export
+Services: immution=unknown apache2=unknown | gate freshness UNKNOWN
+q quit 1 today 2 yest 3 last7 4 prev-week t cycle ? help r refresh
+
+PREVIOUS CALENDAR WEEK - synthetic text dump
+
+IMMUTION | LIVE LOGS | READ ONLY
+Generated: 2026-10-30T17:00:00+00:00
+Timeframe: previous-week | timezone: Europe/Rome
+Range [start, end): [2026-10-19T00:00:00+02:00, 2026-10-26T00:00:00+01:00)
+Effective end (exclusive, as of generation): 2026-10-25T23:00:00+00:00
+Scope claimed Host: all (UNTRUSTED; not verified vhost)
+TOTAL BLOCKED 1 | unique IPs 1
+TOTAL WOULD_BLOCK 1 | unique IPs 1 (allowed, not blocked)
+IPs are not bots; distinct counts overlap. No IPs/queries displayed.
+MB RISPARMIATI: N/D
+No response-byte evidence / baseline. Not measurable from event counts.
+TOP 5 CLAIMED HOST (untrusted; ranked by blocked records, ties by name)
+CLAIMED HOST | BLOCKED | WOULD_BLOCK
+archive.invalid | 1 | 1
+OTHER HOSTS 0 (including monitor-only) | 0 | 0
+SELFTEST markers excluded: blocked=0 would_block=0 (spoofable)
+Future records excluded as of generation: 0
+Coverage: UNKNOWN; available events.csv rotations only, not all HTTP traffic.
+History UNKNOWN: event evidence 2/7 dates (idle OR gaps on others)
+Retention, logging continuity and gate/follower freshness cannot be proven.
+Source counts are file provenance, not verified sites.
+source 1: blocked=1 would_block=1
+Warnings: none
+Read issues: outside_range=62
+Malformed, copytruncate, capacity/read limits can make counts INCOMPLETE.
+Services sampled: immution=unknown apache2=unknown
