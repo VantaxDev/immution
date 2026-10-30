@@ -21,6 +21,11 @@ jobs:
           python3 -m unittest discover -s tests -v
           python3 -m unittest discover -s experimental/dashboard -v
           python3 -m py_compile src/immution.py tools/*.py
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Offline dashboard DOM harness
+        run: node experimental/dashboard/test_ui.cjs
       - name: Shell syntax
         run: for script in scripts/*.sh; do bash -n "$script"; done
       - name: Config validation
