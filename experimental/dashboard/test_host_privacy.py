@@ -44,7 +44,7 @@ class HostOutputTests(unittest.TestCase):
         text = '\n'.join(live.lines(self.r, 'all', 'unknown'))
         for host in hosts:
             self.assertNotIn(host.split(':')[0], text)
-        self.assertIn('valid.invalid', text)
+        self.assertEqual(self.r.summary('valid.invalid')['counts'], {'would_block': 1})
 
 
 if __name__ == '__main__':
