@@ -19,6 +19,7 @@ jobs:
       - name: Python tests
         run: |
           python3 -m unittest discover -s tests -v
+          python3 -m unittest discover -s experimental/dashboard -v
           python3 -m py_compile src/immution.py tools/*.py
       - name: Shell syntax
         run: for script in scripts/*.sh; do bash -n "$script"; done
