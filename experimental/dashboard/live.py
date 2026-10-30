@@ -164,7 +164,7 @@ class Reader:
                 self.issues['capacity_dropped'] += 1
                 return
             self.events.append((stamp, r['action'], token, claimed(r['host']), state['source'] + 1, test))
-        except (ValueError, UnicodeError, csv.Error, StopIteration):
+        except (ValueError, OverflowError, UnicodeError, csv.Error, StopIteration):
             self.issues['malformed'] += 1
 
     def summary(self, site='all'):

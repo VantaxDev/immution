@@ -115,6 +115,23 @@ class LiveTests(unittest.TestCase):
         self.assertEqual(self.r.summary()['counts'], {'blocked': 1, 'would_block': 1})
         self.assertIn('READ ERROR source 1', self.r.warnings)
 
+    def test_timestamp_conversion_overflow_does_not_stop_ingestion(self):
+        self.p.write_bytes(encoded([
+            row(stamp='0001-01-01T00:00:00+23:59'),
+            row(),
+            row(stamp='9999-12-31T23:59:59-23:59'),
+            row(action='would_block'),
+        ]))
+        self.r.refresh(NOW)
+        self.assertEqual(self.r.summary()['counts'], {'blocked': 1, 'would_block': 1})
+        self.assertEqual(self.r.issues['malformed'], 2)
+        # Bad records are skipped once; healthy appends still arrive normally.
+        with self.p.open('ab') as handle:
+            handle.write(encoded([row()], header=False))
+        self.r.refresh(NOW)
+        self.assertEqual(self.r.summary()['counts'], {'blocked': 2, 'would_block': 1})
+        self.assertEqual(self.r.issues['malformed'], 2)
+
     def test_health_unknown_and_sanitization(self):
         with patch.object(live.subprocess,'run',side_effect=OSError):
             self.assertEqual(live.health(),'immution=unknown apache2=unknown')
