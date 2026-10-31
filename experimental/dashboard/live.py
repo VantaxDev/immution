@@ -13,18 +13,15 @@ import sys
 import time
 import zlib
 from datetime import datetime, timezone
-from zoneinfo import ZoneInfo
 from collections import Counter, defaultdict
+from timeframes import ROME, PRESETS, calendar_date, resolve_window
+from presentation import safe, savings_rows, panel_rows, dump_text, lines
 
-ROME = ZoneInfo('Europe/Rome')
 HEADER = 'timestamp,action,ip,host,request_uri,score,requests,errors_404,probes,user_agent,reasons'.split(',')
 DEFAULTS = ['/var/log/immution/events.csv', '/var/log/immution/prioris/events.csv']
 BUDGET = 8 * 1024 * 1024  # total decompressed bytes per refresh
 MAX_RECORD = 65536
 MAX_EVENTS = 300000
-
-def safe(value):
-    return ''.join(c if 32 <= ord(c) < 127 else '?' for c in str(value))
 
 def claimed(value):
     # Only domain-shaped claims are displayed. Never display URLs, queries or IPs.
@@ -44,7 +41,7 @@ def claimed(value):
     return value if len(value) <= 253 and re.fullmatch(r'[a-z0-9](?:[a-z0-9.-]*[a-z0-9])?', value) else 'unknown'
 
 class Reader:
-    def __init__(self, paths):
+    def __init__(self, paths, timeframe='today', start=None, end=None):
         self.paths = [Path(p) for p in paths]
         self.files = {}
         self.events = []
@@ -54,6 +51,15 @@ class Reader:
         self.cutoff = None
         self.bytes_read = 0
         self.salt = os.urandom(16)
+        self.timeframe = timeframe
+        self.custom_start, self.custom_end = start, end
+        self.window = None
+        self._summaries = {}
+
+    def set_timeframe(self, name):
+        if name not in PRESETS:
+            raise ValueError('unknown timeframe')
+        self.timeframe = name
 
     def close(self):
         for state in self.files.values():
@@ -62,13 +68,16 @@ class Reader:
 
     def refresh(self, now=None):
         now = now or datetime.now(timezone.utc)
+        window = resolve_window(self.timeframe, now, self.custom_start, self.custom_end)
         day = now.astimezone(ROME).date()
-        if day != self.day:
+        if self.window is None or window.key != self.window.key:
             self.close()
             self.events.clear()
             self.issues.clear()
-            self.day = day
+        self.day = day
+        self.window = window
         self.cutoff = now
+        self._summaries.clear()
         self.warnings = []
         remaining = BUDGET
         found = set()
@@ -154,8 +163,9 @@ class Reader:
             stamp = datetime.fromisoformat(r['timestamp'])
             if stamp.tzinfo is None:
                 raise ValueError()
-            if stamp.astimezone(ROME).date() != self.day:
-                self.issues['outside_today'] += 1
+            stamp = stamp.astimezone(timezone.utc)
+            if not self.window.key[0] <= stamp < self.window.key[1]:
+                self.issues['outside_range'] += 1
                 return
             if r['action'] not in ('blocked', 'would_block'):
                 self.issues['unknown_action'] += 1
@@ -173,14 +183,25 @@ class Reader:
             self.issues['malformed'] += 1
 
     def summary(self, site='all'):
+        if site in self._summaries:
+            return self._summaries[site]
+        if site != 'all':
+            # Keep global + current scope only, not one full summary per Host.
+            for previous in list(self._summaries):
+                if previous != 'all':
+                    del self._summaries[previous]
         counts, unique, tests, hours = Counter(), defaultdict(set), Counter(), Counter()
         sites, sources = defaultdict(Counter), defaultdict(Counter)
         last = None
         future = 0
+        dates = set()
+        effective_end = min(self.cutoff, self.window.key[1])
         for stamp, action, ip, host, source, test in self.events:
-            if stamp > self.cutoff:
+            if stamp >= effective_end:
                 future += 1
                 continue
+            local = stamp.astimezone(ROME)
+            dates.add(local.date())
             if test:
                 if site == 'all' or host == site:
                     tests[action] += 1
@@ -191,10 +212,13 @@ class Reader:
             counts[action] += 1
             unique[action].add(ip)
             sources[source][action] += 1
-            hours[(stamp.astimezone(ROME).strftime('%H %z'), action)] += 1
+            hours[(local.strftime('%Y-%m-%d %H %z'), action)] += 1
             last = max(last, stamp) if last else stamp
-        return dict(counts=counts, unique={k: len(v) for k,v in unique.items()}, tests=tests,
-                    hours=hours, sites=sites, sources=sources, last=last, future=future)
+        result = dict(counts=counts, unique={k: len(v) for k,v in unique.items()}, tests=tests,
+                      hours=hours, sites=sites, sources=sources, last=last, future=future,
+                      dates=dates, effective_end=effective_end)
+        self._summaries[site] = result
+        return result
 
 def health():
     result = []
@@ -207,40 +231,6 @@ def health():
         except (OSError, subprocess.TimeoutExpired):
             result.append(service + '=unknown')
     return ' '.join(result)
-
-def lines(reader, site, status, help_visible=False):
-    s = reader.summary(site)
-    c, u = s['counts'], s['unique']
-    rows = ['IMMUTION | LIVE LOGS | READ ONLY',
-            'Today Europe/Rome: ' + str(reader.day) + ' 00:00 -> ' + reader.cutoff.astimezone(ROME).isoformat(timespec='seconds'),
-            'Claimed Host filter: ' + site + ' (UNTRUSTED; not verified vhost)',
-            'BLOCKED %d | unique IPs %d' % (c['blocked'], u.get('blocked', 0)),
-            'WOULD_BLOCK %d | unique IPs %d (allowed, not blocked)' % (c['would_block'], u.get('would_block', 0)),
-            'IPs are not bots; distinct counts overlap. No IPs/queries displayed.',
-            'SELFTEST markers excluded: blocked=%d would_block=%d (untrusted markers)' % (s['tests']['blocked'], s['tests']['would_block']),
-            'Services sampled: ' + status,
-            'Follower freshness / gate coverage: UNKNOWN (no heartbeat contract)',
-            'Last event: ' + (s['last'].astimezone(ROME).isoformat(timespec='seconds') + ' age=%ds' % (reader.cutoff-s['last']).total_seconds() if s['last'] else 'none; not proof of failure'),
-            'Coverage: available events.csv rotations only; not all HTTP traffic.',
-            'Warnings: ' + ('; '.join(sorted(set(reader.warnings))) or 'none'),
-            'Read issues (nonzero may mean INCOMPLETE): ' + str(dict(reader.issues)) + ' future=' + str(s['future'])]
-    if help_visible:
-        rows += ['HELP: Tab/n/p cycle claimed hosts; 0 all; j/k scroll; r refresh; q quit.',
-                 'Refresh reads bounded appended bytes only; no daemon, bans or service changes.',
-                 'Source 1 = global events.csv; source 2 = prioris/events.csv; not vhosts.',
-                 'Known selftest requires host+URI+UA; spoofable, not authenticated.',
-                 'Malformed/multiline records skipped visibly. Missing history cannot be inferred.']
-    rows += ['', 'SOURCE (file provenance, NOT site)       BLOCKED  WOULD_BLOCK']
-    for source in range(1, len(reader.paths)+1):
-        v = s['sources'][source]
-        rows.append('%-40s %7d %12d' % ('source ' + str(source), v['blocked'], v['would_block']))
-    rows += ['', 'CLAIMED HOST (untrusted)                  BLOCKED  WOULD_BLOCK']
-    for host, v in sorted(s['sites'].items()):
-        rows.append('%-40s %7d %12d' % (host[:40], v['blocked'], v['would_block']))
-    rows += ['', 'HOUR Rome offset                         BLOCKED  WOULD_BLOCK']
-    for hour in sorted(set(h for h,a in s['hours'])):
-        rows.append('%-40s %7d %12d' % (hour, s['hours'][(hour,'blocked')], s['hours'][(hour,'would_block')]))
-    return [safe(row) for row in rows]
 
 def terminal_theme(screen, curses):
     """Inherit terminal colors; never redefine the user's palette."""
@@ -258,104 +248,6 @@ def terminal_theme(screen, curses):
     return base
 
 
-DIGITS = {
-    '0': (' _ ', '| |', '|_|'), '1': ('   ', '  |', '  |'),
-    '2': (' _ ', ' _|', '|_ '), '3': (' _ ', ' _|', ' _|'),
-    '4': ('   ', '|_|', '  |'), '5': (' _ ', '|_ ', ' _|'),
-    '6': (' _ ', '|_ ', '|_|'), '7': (' _ ', '  |', '  |'),
-    '8': (' _ ', '|_|', '|_|'), '9': (' _ ', '|_|', ' _|'),
-    '.': (' ', ' ', '.'), '-': ('   ', ' _ ', '   '),
-}
-
-
-def savings_rows(count, width, baseline=None, block_bytes=None):
-    """Explicit counterfactual estimate only; no inferred or default byte values."""
-    if baseline is None or block_bytes is None:
-        return ['MB RISPARMIATI: N/D',
-                'No response-byte evidence / baseline. Not measurable from event counts.']
-    from decimal import Decimal, localcontext
-    with localcontext() as context:
-        context.prec = 40
-        mb = Decimal(count) * (Decimal(baseline) - Decimal(block_bytes)) / Decimal(1000000)
-        number = format(mb, '.2f')
-    label = 'MB RISPARMIATI / STIMA: ' + number
-    result = [label]
-    if len(number) * 4 - 1 <= width:
-        result += [' '.join(DIGITS[c][i] for c in number) for i in range(3)]
-    result += ['STIMA: blocked x (%s - %s) bytes / 1,000,000' % (baseline, block_bytes)]
-    return result
-
-
-def panel_rows(reader, site, status, width, help_visible=False, baseline=None, block_bytes=None):
-    """Presentation only; collector and --once semantics remain unchanged."""
-    import textwrap
-    width = max(1, width)
-    s = reader.summary(site)
-    rows = []
-    def add(text, style='normal'):
-        text = safe(text)
-        if len(text) <= width:
-            rows.append((text, style))
-        else:
-            for part in textwrap.wrap(text, width, replace_whitespace=False) or ['']:
-                rows.append((part, style))
-    def section(text):
-        add(text + ' ' + '-' * max(0, width - len(text) - 1), 'section')
-    def table(label, values, timeline=False):
-        section(label)
-        if width < 42:
-            for name, b, m, selected in values:
-                add(('> ' if selected else '  ') + name, 'selected' if selected else 'normal')
-                add('  B %s | M %s' % (b, m))
-            return
-        digits = max([7] + [len(str(v)) for row in values for v in row[1:3]])
-        bar_width = min(18, max(0, width - 60)) if timeline else 0
-        name_width = max(8, width - 2 * digits - 5 - (bar_width + 1 if bar_width else 0))
-        add('  %-*s %*s %*s' % (name_width, 'HOUR / UTC OFFSET' if timeline else 'NAME', digits, 'BLOCKED', digits, 'MONITOR'), 'dim')
-        peak = max([1] + [max(b, m) for _, b, m, _ in values])
-        for name, b, m, selected in values:
-            name = safe(name)
-            if len(name) > name_width:
-                name = name[:name_width - 1] + '~'
-            text = '%s %-*s %*d %*d' % ('>' if selected else ' ', name_width, name, digits, b, digits, m)
-            if bar_width:
-                half = max(1, (bar_width - 1) // 2)
-                text += ' ' + ('#' * round(b / peak * half)).ljust(half) + '/' + ('+' * round(m / peak * half)).ljust(half)
-            add(text, 'selected' if selected else 'normal')
-    c, u = s['counts'], s['unique']
-    section('01 OVERVIEW')
-    for text in savings_rows(c['blocked'], width, baseline, block_bytes):
-        add(text, 'metric')
-    add('Today Europe/Rome / selected host / MB = 1,000,000 bytes', 'dim')
-    metrics = ['BLOCKED  %s  | IPs %s' % (format(c['blocked'], ','), u.get('blocked', 0)),
-               'MONITOR  %s  | IPs %s' % (format(c['would_block'], ','), u.get('would_block', 0))]
-    if width >= 70:
-        add(metrics[0].ljust((width - 3) // 2) + ' | ' + metrics[1], 'metric')
-    else:
-        for metric in metrics:
-            add(metric, 'metric')
-    add('MONITOR = would_block (allowed). Distinct IPs overlap; IPs are not bots.', 'dim')
-    add('Today %s 00:00 -> %s Europe/Rome' % (reader.day, reader.cutoff.astimezone(ROME).strftime('%H:%M:%S')), 'dim')
-    add('Last event: ' + (s['last'].astimezone(ROME).strftime('%H:%M:%S') + ' (%ds ago)' % (reader.cutoff - s['last']).total_seconds() if s['last'] else 'none; not proof of failure'))
-    if help_visible:
-        section('HELP / READ ONLY')
-        for text in lines(reader, site, status, True)[13:18]:
-            add(text)
-        add('Bars: # blocked / + monitor, common peak scale. ~ means shortened host; selected host is shown in full above.')
-        add('Home: first row; PgUp/PgDn: page. ? closes help. Colors: terminal defaults, no palette changes.')
-    table('02 CLAIMED HOSTS / UNTRUSTED', [(host, v['blocked'], v['would_block'], host == site) for host, v in sorted(s['sites'].items())])
-    table('03 HOURLY EVENTS / # BLOCKED + MONITOR', [(hour, s['hours'][(hour, 'blocked')], s['hours'][(hour, 'would_block')], False) for hour in sorted(set(h for h, a in s['hours']))], True)
-    table('04 SOURCES / FILES, NOT VHOSTS', [('source %s' % source, s['sources'][source]['blocked'], s['sources'][source]['would_block'], False) for source in range(1, len(reader.paths) + 1)])
-    section('05 HEALTH & COVERAGE')
-    add('Services sampled: ' + status)
-    add('Follower freshness / gate coverage: UNKNOWN (no heartbeat contract)')
-    add('Available events.csv rotations only; not all HTTP traffic.')
-    add('Selftest markers excluded: B=%d M=%d (spoofable)' % (s['tests']['blocked'], s['tests']['would_block']))
-    add('Warnings: ' + ('; '.join(sorted(set(reader.warnings))) or 'none'))
-    add('Read issues: %s; future=%s' % (dict(reader.issues), s['future']))
-    return rows
-
-
 def screen_main(screen, curses, reader, args):
     base = terminal_theme(screen, curses)
     screen.keypad(True)
@@ -364,7 +256,7 @@ def screen_main(screen, curses, reader, args):
         curses.curs_set(0)
     except curses.error:
         pass
-    site, offset, show_help = args.site, 0, False
+    site, show_help = args.site, False
     due, status = 0, 'unknown'
     while True:
         if time.monotonic() >= due:
@@ -373,60 +265,48 @@ def screen_main(screen, curses, reader, args):
             due = time.monotonic() + args.interval
         h, w = screen.getmaxyx()
         width = max(1, w - 1)
-        rows = panel_rows(reader, site, status, width, show_help, args.baseline_bytes, args.block_bytes)
-        import textwrap
-        header = [('IMMUTION / LIVE LOGS / READ ONLY', 'title')]
-        header += [(part, 'selected') for part in textwrap.wrap(safe('Host > ' + site + ' [untrusted]'), width)]
-        warning = bool(reader.warnings or reader.issues)
-        header.append(('! INCOMPLETE / inspect health panel' if warning else 'Coverage UNKNOWN | ? details', 'section' if warning else 'dim'))
-        header = header[:max(0, min(len(header), h - 3))]
-        body_height = max(0, h - len(header) - 1)
-        offset = min(offset, max(0, len(rows) - body_height))
-        legend = 'q quit ? help n/p host 0 all j/k scroll r refresh'
-        if width >= 75:
-            legend += ' | %ss | %s/%s' % (args.interval, offset + 1, len(rows))
+        rows = panel_rows(reader, site, status, width, show_help,
+                          args.baseline_bytes, args.block_bytes, height=h, top_n=args.top)
         styles = {'normal': base, 'title': base | curses.A_BOLD,
                   'section': base | curses.A_BOLD | curses.A_UNDERLINE,
                   'selected': base | curses.A_BOLD, 'metric': base | curses.A_BOLD,
                   'dim': base | curses.A_DIM}
         screen.erase()
-        visible = header + rows[offset:offset + body_height]
-        for y, (row, style) in enumerate(visible):
+        for y, (row, style) in enumerate(rows):
             try:
                 screen.addnstr(y, 0, row, max(0, w - 1), styles[style])
             except curses.error:
                 pass
-        if h:
-            try:
-                screen.addnstr(h - 1, 0, legend, max(0, w - 1), base | curses.A_BOLD)
-            except curses.error:
-                pass
         screen.refresh()
         key = screen.getch()
-        ids = ['all'] + sorted(reader.summary()['sites'])
-        if site not in ids:
-            ids.append(site)
         if key in (ord('q'),ord('Q')):
             return
         if key in (9, ord('n'),ord('p'),curses.KEY_LEFT,curses.KEY_RIGHT):
+            ids = ['all'] + sorted(reader.summary()['sites'])
+            if site not in ids:
+                ids.append(site)
             site = ids[(ids.index(site)+(-1 if key in (ord('p'),curses.KEY_LEFT) else 1)) % len(ids)]
-            offset = 0
         elif key == ord('0'):
-            site, offset = 'all',0
+            site = 'all'
         elif key == ord('?'):
-            show_help, offset = not show_help,0
-        elif key in (ord('j'),curses.KEY_DOWN):
-            offset += 1
-        elif key in (ord('k'),curses.KEY_UP):
-            offset = max(0,offset-1)
-        elif key == curses.KEY_HOME:
-            offset = 0
-        elif key == curses.KEY_NPAGE:
-            offset += max(1, body_height)
-        elif key == curses.KEY_PPAGE:
-            offset = max(0, offset - max(1, body_height))
+            show_help = not show_help
+        elif key in tuple(map(ord, '1234t')):
+            if key == ord('t'):
+                index = (PRESETS.index(reader.timeframe) + 1) % len(PRESETS) if reader.timeframe in PRESETS else 0
+            else:
+                index = key - ord('1')
+            reader.set_timeframe(PRESETS[index])
+            due = 0
         elif key == ord('r'):
             due = 0
+
+
+def save_export(path, text):
+    # O_EXCL also refuses existing symlinks. Aggregates are private by default.
+    fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+    with os.fdopen(fd, 'w', encoding='ascii', newline='\n') as output:
+        output.write(text)
+
 
 def main(argv=None):
     p = argparse.ArgumentParser(description=__doc__)
@@ -434,6 +314,11 @@ def main(argv=None):
     p.add_argument('--interval',type=float,default=5,help='refresh seconds (2..3600)')
     p.add_argument('--site',default='all',help='untrusted claimed Host, not a verified vhost')
     p.add_argument('--log',action='append',help='CSV source; repeat (default global and prioris)')
+    p.add_argument('--timeframe', choices=PRESETS, help='default today; last7 includes today')
+    p.add_argument('--start', type=calendar_date, help='custom inclusive YYYY-MM-DD, Rome midnight')
+    p.add_argument('--end', type=calendar_date, help='custom EXCLUSIVE YYYY-MM-DD, Rome midnight')
+    p.add_argument('--top', type=int, default=5, help='top blocked claimed Hosts (1..20, default 5)')
+    p.add_argument('--export', metavar='FILE', help='write one sanitized snapshot to a NEW private file; no overwrite')
     p.add_argument('--baseline-bytes', type=int, help='explicit estimated average unblocked response bytes')
     p.add_argument('--block-bytes', type=int, help='explicit known average block response bytes')
     a = p.parse_args(argv)
@@ -443,9 +328,24 @@ def main(argv=None):
         p.error('byte assumptions must be integers in 0..10^15')
     if not 2 <= a.interval <= 3600:
         p.error('interval must be 2..3600')
-    r = Reader(a.log or DEFAULTS)
+    if not 1 <= a.top <= 20:
+        p.error('top must be 1..20')
+    if (a.start is None) != (a.end is None):
+        p.error('provide both --start and --end (end is exclusive)')
+    if a.start is not None and a.timeframe is not None:
+        p.error('choose --timeframe OR --start/--end')
+    a.timeframe = 'custom' if a.start is not None else (a.timeframe or 'today')
     try:
-        if not a.once and sys.stdin.isatty() and sys.stdout.isatty() and os.environ.get('TERM') not in (None,'','dumb'):
+        resolve_window(a.timeframe, datetime.now(timezone.utc), a.start, a.end)
+    except (ValueError, OverflowError):
+        p.error('invalid or unrepresentable range; use --start < --end, exclusive end')
+    normalized = claimed(a.site)
+    if a.site != 'all' and normalized == 'unknown' and a.site != 'unknown':
+        p.error('site must be a claimed hostname or unknown (never an IP or URL)')
+    a.site = normalized
+    r = Reader(a.log or DEFAULTS, a.timeframe, a.start, a.end)
+    try:
+        if not a.once and not a.export and sys.stdin.isatty() and sys.stdout.isatty() and os.environ.get('TERM') not in (None,'','dumb'):
             try:
                 import curses
                 curses.wrapper(screen_main,curses,r,a)
@@ -455,8 +355,14 @@ def main(argv=None):
             except curses.error:
                 print('Curses unavailable; text snapshot.',file=sys.stderr)
         r.refresh()
-        print('\n'.join(lines(r,a.site,health())))
-        print('\n'.join(savings_rows(r.summary(a.site)['counts']['blocked'], 0, a.baseline_bytes, a.block_bytes)))
+        text = dump_text(r, a.site, health(), a.top, a.baseline_bytes, a.block_bytes)
+        if a.export:
+            try:
+                save_export(a.export, text)
+            except OSError as exc:
+                p.error('cannot create export (no overwrite): ' + (exc.strerror or 'I/O error'))
+        else:
+            print(text, end='')
         return 0
     except KeyboardInterrupt:
         return 0

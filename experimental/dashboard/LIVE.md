@@ -1,82 +1,169 @@
 # Live terminal dashboard (experimental, Python 3.9+)
 
-Separate from the unchanged offline terminal.py prototype and supported core.
-Standard library only, with OS Europe/Rome tzdata and optional curses.
+Read-only gate-event viewer, separate from the engine, installer and unchanged
+offline terminal.py prototype. Standard library only: curses, zoneinfo and
+system Europe/Rome timezone data. No packages, endpoints or services added.
+Run from this checkout: **live.py, presentation.py and timeframes.py must stay
+together** (copying only live.py from an older installation is not enough).
 
-Run: python3 live.py [--once] [--interval 5] [--site example.org]
-Defaults: /var/log/immution/events.csv and /var/log/immution/prioris/events.csv.
-Repeat --log for alternate CSV files. Non-TTY automatically uses --once behavior.
-Tab/n/p: claimed host filter; 0: all; ?: help; j/k: scroll; r: refresh; q: quit.
-Only refreshes while running; no installed service, cron, endpoint or dependencies.
+```sh
+python3 experimental/dashboard/live.py --log /path/to/events.csv
+python3 experimental/dashboard/live.py --log /path/to/events.csv --timeframe previous-week
+python3 experimental/dashboard/live.py --log /path/to/events.csv --timeframe last7 --top 5
+```
 
-Counts are gate event records, not all requests or bots. blocked and would_block
-remain separate; distinct IP counts overlap. IPs are salted in-memory digests;
-raw IPs, URIs, agents and reasons are not retained/displayed. Claimed host is
-untrusted, never trusted vhost attribution. Source numbers identify files only.
-Exact known selftest host+URI+UA markers are excluded separately; spoofable.
-Service state is sampled via systemctl, not proof of follower freshness, gate
-coverage or engine effectiveness. These are explicitly UNKNOWN.
+Without --log, reads /var/log/immution/events.csv and
+/var/log/immution/prioris/events.csv. Repeat --log for independent sources,
+not duplicate aliases of the same file. Source numbers are file provenance,
+not verified sites. Use an account permitted to read the logs.
 
-Today means Europe/Rome midnight through the displayed cutoff, including DST.
-At midnight caches reset and available event rotations are reread. Numeric and
-YYYYMMDD suffixes, optionally gzip, are recognized. No blocked.csv legacy data.
-8 MiB decompressed read budget per refresh, 128 descriptors, 300000 today events;
-limits/errors are visible. --once can be incomplete on large histories; interactive
-mode catches up. Existing file bytes are not reread on ordinary refresh. Renamed
-inodes are retained; compression of an already consumed rotation is skipped.
-copytruncate is inherently racy and flagged as coverage-uncertain; restart to
-rebuild from retained files. Rapid truncate-and-regrow can evade size detection.
-No claim of complete history if logs were deleted, logging failed or retention
-excluded records. Multiline/malformed CSV records are skipped visibly, partial
-trailing records wait for newline. Empty/wrong headers and read failures must
-not be mistaken for healthy no-traffic conditions. No demo substitution.
-Timestamps that overflow during timezone conversion are counted as malformed
-records and skipped without interrupting healthy records in the same source.
-Corrupt gzip/DEFLATE rotations report READ ERROR without stopping ingestion
-from healthy sources. Counts remain potentially incomplete while that warning
-is present; the reader does not repair or modify source files.
+## One screen, not a scrollable report
 
-Installation is additive: a new version directory under /opt/immution-dashboard
-and a non-overwriting /usr/local/bin/immution-dashboard launcher. No changes to
-/opt/immution, /etc, service units, Apache or source logs.
-Rollback: remove only the dashboard launcher (after checking its target), leave
-version directory for audit. No engine rollback or service restart is needed.
+Target **80x24** (79 printable columns to avoid terminal wrap). Metrics, range,
+top claimed Hosts, Other, warnings, coverage and controls fit one viewport.
+There is no scrolling offset: j/k, up/down and PageUp/Down do not scroll.
+Help replaces the host area instead of appending a document. Resize recomputes
+the layout. Small terminals show compact metrics/range and UNKNOWN coverage;
+extreme sizes necessarily omit detail. Quit stays on the final row, even at
+1x1. Use a dump for full text and unabbreviated names.
 
-Validation: python3 -m unittest discover -s experimental/dashboard -v
-Core: python3 -m unittest discover -s tests; ./scripts/check-release.sh
-Production validation must compare fixed-cutoff independent CSV aggregation,
-exercise a real SSH PTY and check unchanged service PIDs/start times. Never
-commit production logs, private deployment details or production metrics.
+--top N sets a maximum of 1..20 (default 5), reduced further if the viewport
+needs room for metrics. Ranking uses **blocked event records only**, descending,
+with claimed hostname as deterministic tie-breaker. Monitor-only Hosts do not
+enter the top. **Other includes every omitted Host**, including monitor-only
+and rows hidden by height/top limit. Top + Other equals complete selected-scope
+totals. IP unique counts overlap and must not be summed. A ~ marks a shortened
+label, never a verified site identity or proof of a protected site.
 
-## Terminal refinement
+- 1: today; 2: yesterday; 3: last7; 4: previous calendar week.
+- t: cycle presets (from a custom range, return to today).
+- Tab / n / p / left / right: claimed Host filter; 0: all Hosts.
+- r: bounded refresh; ?: help; q: quit.
 
-The live TUI uses numbered panels, bold metrics, aligned host/source tables and
-paired hourly bars (# blocked / + monitor, shared peak). Selected claimed host
-and a concise key legend stay visible; Home/PgUp/PgDn supplement j/k scrolling.
-Narrow terminals wrap metrics/records; long table names end in ~ (select the
-host to see its full name). Extreme sizes retain as much of q quit as fits.
-Terminal foreground/background are inherited with curses default colors and
-pair (-1,-1), including cleared space and resize; no palette redefinition,
-reverse-video theme or hardcoded colors. Unsupported color initialization falls
-back to monochrome attributes. Curses wrapper restores terminal state on exit
-and exceptions. No new dependencies; Python 3.9+ still required.
+--site example.org selects an untrusted claimed Host, not a trusted vhost.
+IP/URL scope arguments are rejected; unknown selects rejected/non-domain claims.
+Scope is explicit at 80x24; tiny views can abbreviate it. Default colors are
+inherited from the terminal, including SSH light/dark themes. No palette
+redefinition or forced background; curses restores terminal state.
 
-### MB saved: unknown by default, explicitly estimated when configured
+## Calendar windows
 
-The prominent MB RISPARMIATI panel shows N/D because events.csv has no response
-byte fields and blocked requests do not establish counterfactual response size.
-The existing tools/immution_bandwidth.py is a separate heuristic with defaults;
-those defaults are deliberately NOT imported into this live dashboard.
-Optionally supply BOTH --baseline-bytes N and --block-bytes N (integers 0..10^15).
-Use a documented representative unblocked-response estimate for the former and
-known average served block-response bytes for the latter; nothing is assumed.
-The STIMA label remains beside the number, with 3-line ASCII digits when they fit:
-blocked events * (baseline bytes - block bytes) / 1,000,000 decimal MB.
-Negative estimates are retained, not clamped into fictitious savings. Only
-blocked events count, excluding marked selftests; selected host and today's
-Europe/Rome window apply. Monitor events do not save bandwidth. N/D remains N/D
-even for zero events without byte evidence; explicit estimates can be zero.
-Byte assumptions are per invocation, not persisted. --once includes the label
-and formula without big digits. This is not measured network traffic savings.
-A defensible baseline needs owner-approved representative response-size evidence;
-no production probes, content collection or monitoring changes are performed.
+All windows are **[inclusive start, exclusive end)** at local midnight in
+**Europe/Rome**, not UTC dates or fixed 24-hour durations:
+
+| Preset | Calendar window |
+|---|---|
+| today (default) | Today 00:00 to tomorrow 00:00 |
+| yesterday | Yesterday 00:00 to today 00:00 |
+| last7 | Six calendar dates before today through today; end tomorrow |
+| previous-week | Previous Monday 00:00 to following Monday 00:00 (Mon-Sun) |
+
+On Friday 2026-10-30, previous-week is
+[2026-10-19T00:00:00+02:00, 2026-10-26T00:00:00+01:00), **169 hours**.
+last7 instead starts 2026-10-24. DST days can be 23 or 25 hours; repeated hours
+remain distinct by date and UTC offset internally. Event timestamps must be
+timezone-aware; invalid/overflowing conversions are counted as malformed.
+
+Custom ranges take dates, not ambiguous local clock times. Both options are
+required, --end is exclusive and later than --start, and --timeframe cannot
+be combined with them:
+
+```sh
+python3 experimental/dashboard/live.py --log /path/to/events.csv \
+  --start 2026-10-19 --end 2026-10-26
+```
+
+Generated/as-of time is shown. Records at or after the earlier of generation
+time and requested end are excluded. Future portions are not observations.
+Presets move at local midnight (previous-week on Monday); custom dates stay
+fixed. Changing actual bounds resets the event cache and rereads available
+logs **once**, incrementally under the normal budget. Re-selecting identical
+bounds does not reread them.
+
+## Snapshot and manual historical dump
+
+--once prints a deterministic, ordered plain-text snapshot, not the compact
+screen. Non-TTY and dumb-terminal fallback do the same. Same input state,
+cutoff and sampled service status produce the same output; generation time is
+intentionally included. Dumps contain UTC generation, explicit range with
+offsets/timezone, effective cutoff, complete selected totals, top N plus Other,
+selftest/future exclusions, per-source counts, issues, warnings and coverage.
+No raw IP, URI, query, UA or reason is emitted.
+
+```sh
+python3 experimental/dashboard/live.py --log /path/to/events.csv \
+  --timeframe previous-week --once
+
+# NEW private file (0600); existing files AND symlinks are refused.
+python3 experimental/dashboard/live.py --log /path/to/events.csv \
+  --timeframe previous-week --top 10 --export ./immution-2026-W43.txt
+
+python3 experimental/dashboard/live.py --log /path/to/events.csv \
+  --start 2026-10-19 --end 2026-10-26 --export ./immution-custom.txt
+```
+
+--export FILE implies a single snapshot, writes no dashboard to stdout and
+does not create parent directories. Choose fresh filenames: no overwrite flag.
+Shell redirection follows shell overwrite rules; use --export for no-clobber.
+Host aggregates can still be private: review before sharing. **No scheduled
+archival, cron or service is created.**
+
+## Coverage and bounded work
+
+Counts are parsed gate event records, not all HTTP requests, bots, verified
+sites protected or effectiveness. blocked and would_block (allowed) remain
+separate. Exact known selftest host+URI+UA markers are excluded/reported, but
+spoofable. Parsed-event cache retains salted IP digests, not raw IP/URI/UA or
+reasons. A bounded partial-record buffer can temporarily hold unparsed input;
+it is never dumped.
+
+Numeric and YYYYMMDD rotations, optionally gzip, are recognized. No legacy
+blocked.csv or missing historical data is synthesized. Budget: **8 MiB
+decompressed per refresh**, **128 descriptors**, **300000 selected-range
+events**. A snapshot/export performs one refresh and may therefore show
+CATCHING UP / INCOMPLETE on large histories. It does not silently force a full
+scan to manufacture completeness. Interactive refreshes catch up. In-memory
+summaries/top rankings are cached between refreshes; normal ticks read appended
+bytes, not all historical bytes again.
+
+Renamed inodes are retained; compression of consumed rotations is skipped.
+Copytruncate is racy and flagged; rapid truncate-and-regrow can evade detection.
+Bad gzip/DEFLATE produces READ ERROR without stopping healthy files. Partial
+records wait for newline; multiline/malformed records are skipped visibly.
+Empty/wrong headers, missing/unreadable sources and capacity/read/file/rotation
+limits stay explicit.
+
+**History/coverage always UNKNOWN.** Dates with parsed event evidence are shown,
+but no records can mean idle traffic OR missing logs; neither gaps nor
+completeness are inferred. Evidence on every date does not prove continuity.
+Retention loss, logging failures and gate coverage cannot be reconstructed.
+Service samples are not a follower heartbeat. No production-count audit implied.
+
+## MB saved
+
+MB RISPARMIATI: N/D stays prominent by default: events.csv has no byte evidence.
+No heuristic defaults are imported. BOTH optional integers --baseline-bytes N
+and --block-bytes N (0..10^15) enable an explicit **STIMA**: blocked records *
+(baseline - block bytes) / 1,000,000. Negative estimates stay negative. Selected
+range/Host applies; monitor and selftest records save no bytes. This is not
+measured network traffic. Three ASCII digit rows appear only when height AND
+width suffice, never causing scrolling.
+
+## Verification and deployment boundary
+
+```sh
+python3 -m unittest discover -s experimental/dashboard -v
+node experimental/dashboard/test_ui.cjs
+./scripts/check-release.sh
+```
+
+See [synthetic compact/dump demo](COMPACT_DEMO.txt). PTY tests cover 80x24,
+presets, navigation, help, resize, colors and terminal restoration. Regressions
+cover DST, exclusive ends, cache switching, gzip rotations, incomplete history,
+totals conservation, sanitized/no-clobber exports and bounded viewports. They
+use no production logs and do not certify every terminal emulator visually.
+
+This expansion stays branch/PR-only until separately approved for merge/deploy.
+Future additive/versioned installation must copy all three runtime modules,
+with launcher rollback. Do not modify engine, gate, logs, Apache or services.
+Production validation must separately verify SHA, SSH PTY and service identities.

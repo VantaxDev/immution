@@ -32,16 +32,23 @@ No pip dependencies are needed; the interactive Linux UI uses standard curses.
     # From the repository root; use an account allowed to read the chosen log.
     python3 experimental/dashboard/live.py --log /path/to/events.csv --once
     python3 experimental/dashboard/live.py --log /path/to/events.csv --interval 5
+    python3 experimental/dashboard/live.py --log /path/to/events.csv --timeframe previous-week
+    python3 experimental/dashboard/live.py --log /path/to/events.csv --start 2026-10-19 --end 2026-10-26 --export ./history-W43.txt
     # Offline demonstration with explicitly synthetic data:
     python3 experimental/dashboard/terminal.py --demo --once
 
 Run directly from source: the core installer does **not** install an
 immution-dashboard command. Repeat --log for additional event CSV files.
-Refresh runs only while the terminal is open. Keys: Tab/n/p claimed-host
-filter, 0 all, ? help, j/k scroll, r refresh, q quit.
-Numbered panels preserve your terminal foreground and background. Blocked and
-monitor-only events stay separate; claimed Host values are untrusted, and IP
-counts are not bot counts. Missing data and coverage limits remain visible.
+Refresh runs only while the terminal is open. The overview fits **80x24 without
+scrolling**, with a compact fallback for smaller terminals. Keys 1/2/3/4 or t
+select today, yesterday, last7 (including today) or the previous Monday-Sunday
+calendar week in Europe/Rome. Custom --start/--end dates are half-open, with
+exclusive end. Tab/n/p filter claimed Host, 0 all, ? help, r refresh, q quit.
+Top blocked claimed Hosts (default --top 5) and aggregated Other preserve all
+selected totals, including monitor-only Hosts, without claiming verified sites
+protected. Missing history stays UNKNOWN. Terminal default colors are preserved.
+--once prints full sanitized text; --export FILE creates a new private file,
+refusing overwrites/symlinks. No scheduled archival is installed.
 
 **MB saved is N/D by default**, not measured from event counts. Only explicit
 --baseline-bytes N and --block-bytes N enable a labelled estimate:
