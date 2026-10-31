@@ -1,6 +1,9 @@
 import csv
 import gzip
 import io
+import os
+import subprocess
+import sys
 from pathlib import Path
 import tempfile
 import unittest
@@ -29,6 +32,63 @@ class LiveTests(unittest.TestCase):
         self.p=Path(self.tmp.name)/'events.csv'
         self.r=live.Reader([str(self.p)])
         self.addCleanup(self.r.close)
+
+    @unittest.skipUnless(hasattr(os, 'mkfifo'), 'requires POSIX FIFO')
+    def test_nonregular_sources_do_not_block_healthy_ingestion(self):
+        self.p.write_bytes(encoded([row()]))
+        fifo = self.p.with_name('pipe.csv')
+        os.mkfifo(fifo)
+        os.mkfifo(str(self.p) + '.1.gz')
+        Path(str(self.p) + '.2').mkdir()
+        # A subprocess deadline safely detects a blocking open without leaving
+        # a stuck test thread or requiring a writer on either synthetic FIFO.
+        code = """
+import sys
+from datetime import datetime
+from live import Reader
+reader = Reader(sys.argv[1:])
+try:
+    reader.refresh(datetime.fromisoformat('2026-10-30T17:00:00+00:00'))
+    assert reader.summary()['counts'] == {'blocked': 1}
+    assert 'NONREGULAR source 1' in reader.warnings
+    assert 'NONREGULAR source 2' in reader.warnings
+    assert len(reader.files) == 1
+finally:
+    reader.close()
+"""
+        result = subprocess.run([sys.executable, '-c', code, str(fifo), str(self.p)],
+                                cwd=Path(live.__file__).parent, capture_output=True,
+                                text=True, timeout=3)
+        self.assertEqual(result.returncode, 0, result.stderr)
+
+    @unittest.skipUnless(hasattr(os, 'mkfifo'), 'requires POSIX FIFO')
+    def test_opened_inode_checked_after_discovery_and_descriptor_closed(self):
+        self.p.write_bytes(encoded([row()]))
+        fifo = self.p.with_name('replaced.csv')
+        os.mkfifo(fifo)
+        original_open = os.open
+        opened = []
+
+        def replaced_open(path, flags):
+            fd = original_open(fifo, flags)
+            opened.append(fd)
+            return fd
+
+        with patch.object(live.os, 'open', side_effect=replaced_open):
+            with self.assertRaises(OSError):
+                live.regular_opener(self.p, os.O_RDONLY)
+        self.assertEqual(len(opened), 1)
+        with self.assertRaises(OSError):
+            os.fstat(opened[0])
+
+    def test_gzip_owned_descriptor_closes_with_reader(self):
+        with gzip.open(str(self.p) + '.1.gz', 'wb') as handle:
+            handle.write(encoded([row()]))
+        self.r.refresh(NOW)
+        states = list(self.r.files.values())
+        self.assertEqual(self.r.summary()['counts'], {'blocked': 1})
+        self.r.close()
+        self.assertTrue(all(s['raw'].closed and s['file'].closed for s in states))
 
     def test_counts_selftests_privacy_incremental(self):
         self.p.write_bytes(encoded([row(),row(action='would_block'),row(test=True),row(host='evil\x1b[2J')]))

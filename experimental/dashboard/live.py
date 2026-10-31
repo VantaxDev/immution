@@ -8,6 +8,7 @@ import ipaddress
 import os
 from pathlib import Path
 import re
+import stat
 import subprocess
 import sys
 import time
@@ -35,6 +36,19 @@ def claimed(value):
         pass
     return value if len(value) <= 253 and re.fullmatch(r'[a-z0-9](?:[a-z0-9.-]*[a-z0-9])?', value) else 'unknown'
 
+def regular_opener(path, flags):
+    # Nonblocking open prevents a FIFO replacement between stat and open from
+    # hanging refresh. Check the opened inode, not just the discovered path.
+    fd = os.open(path, flags | os.O_NONBLOCK)
+    try:
+        if not stat.S_ISREG(os.fstat(fd).st_mode):
+            raise OSError('not a regular file')
+    except BaseException:
+        os.close(fd)
+        raise
+    return fd
+
+
 class Reader:
     def __init__(self, paths, timeframe='today', start=None, end=None):
         self.paths = [Path(p) for p in paths]
@@ -59,6 +73,7 @@ class Reader:
     def close(self):
         for state in self.files.values():
             state['file'].close()
+            state['raw'].close()
         self.files.clear()
 
     def refresh(self, now=None):
@@ -85,6 +100,9 @@ class Reader:
                     continue
                 try:
                     st = path.stat()
+                    if not stat.S_ISREG(st.st_mode):
+                        self.warnings.append('NONREGULAR source ' + str(source + 1))
+                        continue
                     key = (source, st.st_dev, st.st_ino)
                     found.add(key)
                     state = self.files.get(key)
@@ -93,6 +111,7 @@ class Reader:
                     if state and st.st_size < state['size']:
                         # copytruncate: old data remains counted, new bytes are read from zero.
                         state['file'].close()
+                        state['raw'].close()
                         del self.files[key]
                         state = None
                         self.issues['copytruncate_coverage_uncertain'] += 1
@@ -105,8 +124,13 @@ class Reader:
                         if len(self.files) >= 128:
                             self.warnings.append('file limit reached: INCOMPLETE')
                             continue
-                        f = gzip.open(path, 'rb') if path.suffix == '.gz' else open(path, 'rb')
-                        state = {'file': f, 'size': st.st_size, 'buffer': b'', 'header': False, 'source': source, 'discard': False, 'path': str(path)}
+                        raw = open(path, 'rb', opener=regular_opener)
+                        try:
+                            f = gzip.GzipFile(fileobj=raw) if path.suffix == '.gz' else raw
+                        except BaseException:
+                            raw.close()
+                            raise
+                        state = {'file': f, 'raw': raw, 'size': st.st_size, 'buffer': b'', 'header': False, 'source': source, 'discard': False, 'path': str(path)}
                         self.files[key] = state
                     state['size'] = st.st_size
                 except OSError:
