@@ -50,10 +50,53 @@ CI evidence for the published head is recorded in the workspace automation
 report, not inferred from local tests. No live server integration, merge,
 deployment, site update or production access is part of this task.
 
+## Follow-up completion — 2026-10-31
+
+PR #4 has since merged as main `858aa998ac460daa75bdea98f0944439cb0165cf`.
+The original PR #5 commits are preserved. A separate development worktree
+integrates current main without rewriting either published history, then
+completes the same Host-privacy slice; PR #5 is updated rather than duplicated.
+The earlier verification above describes the original 2026-10-30 baseline.
+
+Review found another fallback bypass: hexadecimal/mixed numeric claims such as
+`0xc0000201`, `0XC0000201:443`, `0xc0.0.2.1`, `0xc0.0x0.0x2.0x1:80` and
+`0300.0x0.2.01`. Two new regression methods produced **six failures** before
+the patch (five normalization subcases plus the CLI snapshot/export assertion).
+The actual CLI output displayed those claims as top Host labels.
+
+The filter now rejects claims whose dot-separated components are entirely
+decimal digits or `0x`-prefixed hexadecimal digits, in addition to the original
+numeric/dot-only suppression. It is deliberately conservative, not an IPv4
+validator: invalid numeric claims also become `unknown`. No DNS lookup or new
+library is needed; existing `re`/`ipaddress` remain sufficient. Normal domains
+`0xc0000201.example.invalid` and `0xcafe.invalid` remain visible.
+
+The new subprocess regression executes the current CLI with a fixed custom
+date range. Both `--once` and `--export` suppress address labels/IP/query data,
+preserve blocked=3 and would_block=1, and aggregate the three blocked claims
+as `unknown`. Explicit `--site` numeric/hex claims are refused without repeating
+the supplied value in stderr. Existing top-N, date/DST, no-clobber and viewport
+tests continue to run on the integrated feature set.
+
+Verified locally after the change:
+
+- **47 dashboard tests PASS**, including PTY, the original three privacy tests
+  and two new regressions.
+- **14 core tests PASS** via the release check; DOM harness, compilation,
+  shell/PHP/config/systemd checks and whitespace PASS.
+- Protected paths `src config packaging scripts VERSION` have no difference
+  from current main. Diff review: only Host-label normalization, synthetic
+  regressions and documentation; no engine/gate/scoring changes.
+
+Hosted CI must be checked on the published head, separately from these local
+results. This round has **no server access, merge into main, or deployment**.
+
 ## Remaining backlog
 
-- PR #4 still needs owner review/authorization before merge or deployment.
-- This independent PR needs review; combine through ordinary GitHub flow, not
-  by rewriting PR #4. Both change different areas of `live.py`.
-- Existing visual/human release gates remain separate; this fix is not a
-  declaration of a stable release.
+- PR #5 review/merge and any deployment need separate authorization; this
+  fix is not installed by this development round.
+- Release checklist human gates (representative monitor workload, review of
+  legitimate paths/exclusions, proxy identity and private reporting decisions)
+  remain open; no stable-release claim or invented operational evidence.
+- Claimed domains can contain private identifiers: this is not general-purpose
+  anonymization, verified vhost attribution or proof of detector coverage.
