@@ -28,6 +28,13 @@ def claimed(value):
     value = value.lower().strip()
     if re.fullmatch(r'[^:]+:[0-9]{1,5}', value):
         value = value.split(':')[0]
+    # ipaddress intentionally rejects legacy/ambiguous numeric spellings
+    # (leading zeros, shortened/integer or hexadecimal IPv4). Do not expose those as DNS
+    # labels merely because they fail strict IP parsing. No DNS resolution.
+    numeric_part = r'(?:[0-9]+|0x[0-9a-f]+)'
+    if (re.fullmatch(r'[0-9.]+', value) or
+            re.fullmatch(numeric_part + r'(?:\.' + numeric_part + r')*', value)):
+        return 'unknown'
     try:
         ipaddress.ip_address(value)
         return 'unknown'
