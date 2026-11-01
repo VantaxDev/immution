@@ -176,8 +176,18 @@ Probe paths: 3
 Reasons:
   - 12:04:03 +16.0: probe /.git/config
   - 12:04:03 +3.5: 404 /.git/config
+Interpretation:
+  404 responses are cumulative while tracked, not a per-minute rate.
+  Ordinary 404 points can reach the configured threshold without probes or a burst bonus.
+  The active daemon threshold is not stored here; consult its configuration.
+  One IP shares a score across all configured logs/vhosts; this is not a bot identity verdict.
+  Banned is a state flag: actual enforcement depends on gate mode, exclusions and state freshness.
+  Recent reasons are a limited history, not a full score reconstruction.
 ```
 
+See [the cumulative metadata example and policy proposal](docs/SCORING.md#cumulative-404s-are-not-a-rate-or-bot-verdict).
+No metadata exemption is currently implemented; the proposal is not an active
+configuration option or a change to the scoring rules.
 Use documentation-only addresses such as `192.0.2.0/24` in examples and tests;
 do not publish real event logs in bug reports.
 

@@ -82,6 +82,13 @@ def command_explain(runtime_dir: str, ip: str) -> int:
     else:
         for reason in reasons[:10]:
             print(f"  - {reason}")
+    print("Interpretation:")
+    print("  404 responses are cumulative while tracked, not a per-minute rate.")
+    print("  Ordinary 404 points can reach the configured threshold without probes or a burst bonus.")
+    print("  The active daemon threshold is not stored here; consult its configuration.")
+    print("  One IP shares a score across all configured logs/vhosts; this is not a bot identity verdict.")
+    print("  Banned is a state flag: actual enforcement depends on gate mode, exclusions and state freshness.")
+    print("  Recent reasons are a limited history, not a full score reconstruction.")
     return 0
 
 
