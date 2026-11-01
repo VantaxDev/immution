@@ -83,6 +83,41 @@ class CliTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             immutionctl._parse_iso_timestamp("not-a-timestamp")
 
+    def test_report_mixed_timezones_keeps_counts_and_skips_ambiguous_dates(self):
+        cases = (
+            (["2026-07-22T11:30:00+02:00", "2026-07-22T10:00:00Z",
+              "2026-07-22T09:00:00", "invalid"], 2),
+            (["2026-07-22T09:00:00"], 1),
+        )
+        for timestamps, invalid in cases:
+            with self.subTest(timestamps=timestamps):
+                events = os.path.join(self.tempdir.name, "mixed.csv")
+                with open(events, "w", encoding="utf-8", newline="") as handle:
+                    writer = csv.DictWriter(handle, fieldnames=[
+                        "timestamp", "action", "ip", "request_uri"])
+                    writer.writeheader()
+                    for timestamp in timestamps:
+                        writer.writerow({"timestamp": timestamp,
+                                         "action": "would_block", "ip": "192.0.2.50",
+                                         "request_uri": "/robots.txt?private=value"})
+                before = Path(events).read_bytes()
+                with contextlib.redirect_stdout(io.StringIO()) as output:
+                    self.assertEqual(immutionctl.command_report(events, 10), 0)
+                report = output.getvalue()
+                self.assertIn("events: {}".format(len(timestamps)), report)
+                self.assertIn("would_block: {}".format(len(timestamps)), report)
+                self.assertIn("unique_addresses: 1", report)
+                self.assertIn("{} row(s) had an invalid timestamp".format(invalid), report)
+                if len(timestamps) > 1:
+                    self.assertIn("first_event: 2026-07-22T11:30:00+02:00", report)
+                    self.assertIn("last_event: 2026-07-22T10:00:00+00:00", report)
+                else:
+                    self.assertNotIn("first_event:", report)
+                    self.assertNotIn("last_event:", report)
+                self.assertNotIn("192.0.2.50", report)
+                self.assertNotIn("private=value", report)
+                self.assertEqual(Path(events).read_bytes(), before)
+
 
 if __name__ == "__main__":
     unittest.main()

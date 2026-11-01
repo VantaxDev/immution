@@ -152,6 +152,10 @@ sudo /opt/immution/immutionctl.py report
 ```
 
 The default report reads only the current events.csv, not rotated files.
+Time bounds use timestamps with explicit UTC offsets (including `Z`), ordered
+by instant rather than local clock text. Malformed or timezone-less timestamps
+are warned about and excluded from time bounds only; their events, actions,
+paths and address counts remain included. No local timezone is assumed.
 Its paths can still contain identifiers or secrets; review before sharing.
 It reduces the data to review but cannot decide whether an application
 path is legitimate, nor prove false positives are absent. Classify its top paths before enabling block mode.
