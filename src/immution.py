@@ -24,7 +24,8 @@ import subprocess
 import sys
 import threading
 import time
-from datetime import datetime
+from datetime import datetime, timezone, timedelta
+from route_mutation import RouteMutationDetector
 from typing import Any, Dict, Iterable, List, Optional, Tuple
 
 
@@ -106,16 +107,62 @@ def canonical_ip(value: str) -> Optional[str]:
         return None
 
 
-def parse_log_line(line: str) -> Optional[Tuple[str, str, str, int, str]]:
-    """Parse the fields needed by the scoring engine."""
+def parse_log_record(line):
+    """Scoring fields plus response bytes and Apache event time (or None).
+
+    Timestamp failures disable only the monitor; scoring retains its historical
+    processing-time semantics. Apache month names are locale-independent.
+    """
     match = LOG_REGEX.match(line)
     if not match:
         return None
-    raw_ip, _timestamp, method, path, status, _size, _referrer, user_agent = match.groups()
+    raw_ip, stamp, method, path, status, size, _referrer, user_agent = match.groups()
     ip = canonical_ip(raw_ip)
     if ip is None:
         return None
-    return ip, method, path, int(status), user_agent
+    event_time = None
+    months = dict((name, i + 1) for i, name in enumerate(
+        ('Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+         'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec')))
+    timestamp_match = re.fullmatch(
+        r"(\d{2})/([A-Z][a-z]{2})/(\d{4}):(\d{2}):(\d{2}):(\d{2}) ([+-])(\d{2})(\d{2})", stamp)
+    if timestamp_match:
+        day, month, year, hour, minute, second, sign, oh, om = timestamp_match.groups()
+        try:
+            if int(oh) > 23 or int(om) > 59:
+                raise ValueError('invalid UTC offset')
+            offset = (int(oh) * 60 + int(om)) * (1 if sign == '+' else -1)
+            event_time = datetime(int(year), months[month], int(day), int(hour),
+                                  int(minute), int(second),
+                                  tzinfo=timezone(timedelta(minutes=offset))).timestamp()
+        except (ValueError, KeyError, OverflowError, OSError):
+            pass
+    return (ip, method, path, int(status), user_agent,
+            None if size == '-' or len(size) > 19 else int(size), event_time)
+
+
+def parse_log_line(line: str) -> Optional[Tuple[str, str, str, int, str]]:
+    """Backward-compatible five-field scoring interface."""
+    record = parse_log_record(line)
+    return record[:5] if record is not None else None
+
+
+def validate_fingerprint_hosts(value):
+    """Explicit operator assertion of dedicated-log provenance, never Host headers."""
+    if not isinstance(value, dict) or len(value) > 1024:
+        raise ValueError('fingerprint_hosts must be an object with at most 1024 entries')
+    result = {}
+    for path, host in value.items():
+        if (not isinstance(path, str) or not os.path.isabs(path)
+                or not isinstance(host, str) or len(host) > 253
+                or not re.fullmatch(r'[A-Za-z0-9](?:[A-Za-z0-9.-]*[A-Za-z0-9])?', host)):
+            raise ValueError('fingerprint_hosts requires absolute dedicated-log paths and host names')
+        real = os.path.realpath(path)
+        host = host.lower()
+        if real in result and result[real] != host:
+            raise ValueError('conflicting fingerprint host assertions')
+        result[real] = host
+    return result
 
 
 def load_json_config(path: str) -> Dict[str, Any]:
@@ -126,6 +173,8 @@ def load_json_config(path: str) -> Dict[str, Any]:
         raise ValueError("configuration root must be a JSON object")
     if "logs" in data and not isinstance(data["logs"], list):
         raise ValueError("'logs' must be a JSON array")
+    if "fingerprint_hosts" in data:
+        validate_fingerprint_hosts(data["fingerprint_hosts"])
     if "threshold" in data:
         validate_threshold(data["threshold"])
     return data
@@ -142,7 +191,8 @@ def validate_threshold(value: Any) -> float:
 class Immution:
     """Thread-safe scoring engine and log follower."""
 
-    def __init__(self, runtime_dir: str = DEFAULT_RUNTIME_DIR, threshold: float = DEFAULT_THRESHOLD):
+    def __init__(self, runtime_dir: str = DEFAULT_RUNTIME_DIR, threshold: float = DEFAULT_THRESHOLD,
+                 fingerprint_hosts=None):
         self.runtime_dir = runtime_dir
         self.threshold = validate_threshold(threshold)
         self.cache: Dict[str, Dict[str, Any]] = {}
@@ -151,6 +201,9 @@ class Immution:
         # avoids an ever-growing per-IP lock table under a distributed scan.
         self.transaction_lock = threading.Lock()
         self.running = True
+        self.fingerprint_hosts = validate_fingerprint_hosts(
+            {} if fingerprint_hosts is None else fingerprint_hosts)
+        self.route_mutations = RouteMutationDetector()
 
         os.makedirs(self.runtime_dir, mode=0o750, exist_ok=True)
         try:
@@ -299,14 +352,25 @@ class Immution:
                 paths.append([float(item[0]), str(item[1])[:256]])
         data["error_paths"] = paths[-128:]
 
-    def analyze_line(self, line: str) -> None:
-        parsed = parse_log_line(line)
+    def analyze_line(self, line: str, log_source=None) -> None:
+        parsed = parse_log_record(line)
         if parsed is None:
             return
 
-        ip, _method, path, status, user_agent = parsed
+        ip, method, path, status, user_agent, response_bytes, event_time = parsed
         if ip.startswith("127.") or ip == "::1":
             return
+
+        # Independent monitor, BEFORE the untracked successful-traffic fast path.
+        # A source path is NOT itself a vhost. Only explicit dedicated-log
+        # assertions qualify; shared/unknown logs are deliberately skipped.
+        host = self.fingerprint_hosts.get(os.path.realpath(log_source)) if log_source else None
+        if host is not None and event_time is not None:
+            finding = self.route_mutations.observe(
+                ip, host, method, path, status, response_bytes, event_time)
+            if finding is not None:
+                print('[MONITOR response_size_fingerprint] ' + json.dumps(
+                    finding._asdict(), ensure_ascii=True, separators=(',', ':')), flush=True)
 
         is_404 = status == 404
         is_probe = status in {400, 401, 403, 404} and bool(PROBE_REGEX.search(path))
@@ -396,6 +460,7 @@ class Immution:
             self.save_ip_data(ip, data)
 
     def cleanup_old_files(self) -> None:
+        self.route_mutations.prune(time.monotonic())
         # Serialize expiry with request updates and external unblock: a stale
         # read must never delete a freshly replaced state file.
         with self.state_transaction():
@@ -458,7 +523,7 @@ class Immution:
                     if process.poll() is not None:
                         break
                     continue
-                self.analyze_line(line.rstrip("\n"))
+                self.analyze_line(line.rstrip("\n"), log_source=log_path)
         finally:
             process.terminate()
             try:
@@ -557,7 +622,8 @@ def main(argv: Optional[List[str]] = None) -> int:
         return 1
 
     try:
-        Immution(runtime_dir=runtime_dir, threshold=threshold).run(log_paths)
+        Immution(runtime_dir=runtime_dir, threshold=threshold,
+                 fingerprint_hosts=config.get("fingerprint_hosts", {})).run(log_paths)
     except (OSError, RuntimeError, ValueError) as exc:
         print(f"[!] {exc}", file=sys.stderr)
         return 1

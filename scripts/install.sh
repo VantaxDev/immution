@@ -49,6 +49,7 @@ ROOT_DIR="$(cd -- "$SCRIPT_DIR/.." && pwd -P)"
 
 required_files=(
     "$ROOT_DIR/src/immution.py"
+    "$ROOT_DIR/src/route_mutation.py"
     "$ROOT_DIR/src/gate.php"
     "$ROOT_DIR/tools/immutionctl.py"
     "$ROOT_DIR/config/daemon.json"
@@ -76,7 +77,7 @@ if ! python3 -c 'import sys; raise SystemExit(0 if sys.version_info >= (3, 6) el
         "${python_version:-unknown}" >&2
     exit 1
 fi
-python3 -m py_compile "$ROOT_DIR/src/immution.py" "$ROOT_DIR/tools/immutionctl.py"
+python3 -m py_compile "$ROOT_DIR/src/route_mutation.py" "$ROOT_DIR/src/immution.py" "$ROOT_DIR/tools/immutionctl.py"
 
 php_version_id="$(php -r 'echo PHP_VERSION_ID;')"
 if [[ ! "$php_version_id" =~ ^[0-9]+$ ]] || ((php_version_id < 70000)); then
@@ -196,6 +197,7 @@ fi
 
 install -d -o root -g root -m 0755 "$INSTALL_DIR"
 install -o root -g root -m 0755 "$ROOT_DIR/src/immution.py" "$INSTALL_DIR/immution.py"
+install -o root -g root -m 0644 "$ROOT_DIR/src/route_mutation.py" "$INSTALL_DIR/route_mutation.py"
 install -o root -g root -m 0644 "$ROOT_DIR/src/gate.php" "$INSTALL_DIR/gate.php"
 install -o root -g root -m 0755 "$ROOT_DIR/tools/immutionctl.py" "$INSTALL_DIR/immutionctl.py"
 

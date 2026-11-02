@@ -33,6 +33,13 @@ stopped. This TTL is not the score half-life. It is not a guarantee of an exact
 20-minute ban: unbounded scores may take longer to decay. A trusted local writer
 owns the JSON schema; compromised local accounts are outside the threat model.
 
+## Independent monitor
+
+See [response size fingerprint](RESPONSE_SIZE_FINGERPRINT.md) for trusted
+dedicated-log mapping, event-time windows, bounded state and false-positive
+limits. It is disabled for sources without verified host provenance and cannot
+change scoring or enforcement.
+
 ## PHP contract and privacy
 
 Canonicalize IPv6 to match Python filenames, including IPv4-mapped addresses.

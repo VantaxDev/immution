@@ -20,7 +20,7 @@ jobs:
         run: |
           python3 -m unittest discover -s tests -v
           python3 -m unittest discover -s experimental/dashboard -v
-          python3 -m py_compile src/immution.py tools/*.py
+          python3 -m py_compile src/*.py tools/*.py
       - uses: actions/setup-node@v4
         with:
           node-version: "22"
@@ -46,7 +46,7 @@ jobs:
             -v "$GITHUB_WORKSPACE:/work" \
             -w /work \
             "python:${{ matrix.python-version }}-slim" \
-            sh -c 'python -m unittest discover -s tests -v && python -m py_compile src/immution.py tools/*.py'
+            sh -c 'python -m unittest discover -s tests -v && python -m py_compile src/*.py tools/*.py'
 
   php-compatibility:
     name: PHP ${{ matrix.php-version }} gate
