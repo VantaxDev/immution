@@ -130,6 +130,12 @@ Renamed inodes are retained; compression of consumed rotations is skipped.
 Copytruncate is racy and flagged; rapid truncate-and-regrow can evade detection.
 Bad gzip/DEFLATE produces READ ERROR without stopping healthy files. Partial
 records wait for newline; multiline/malformed records are skipped visibly.
+Only regular files are read (including symlinks resolving to regular files).
+FIFOs, directories and devices are skipped with NONREGULAR source warnings;
+nonblocking open plus an opened-inode check also prevents a FIFO substituted
+after discovery from hanging refresh (reported as UNREADABLE). Gzip input
+descriptors are owned and closed by the reader. This does not promise bounded
+wall-clock I/O on a stalled filesystem.
 Empty/wrong headers, missing/unreadable sources and capacity/read/file/rotation
 limits stay explicit.
 
