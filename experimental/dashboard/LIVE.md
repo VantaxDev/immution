@@ -1,10 +1,11 @@
 # Live terminal dashboard (experimental, Python 3.9+)
 
-Read-only gate-event viewer, separate from the engine, installer and unchanged
+Read-only gate-event viewer with opt-in traffic estimates, separate from the
+engine, installer and unchanged
 offline terminal.py prototype. Standard library only: curses, zoneinfo and
 system Europe/Rome timezone data. No packages, endpoints or services added.
-Run from this checkout: **live.py, presentation.py and timeframes.py must stay
-together** (copying only live.py from an older installation is not enough).
+Run from this checkout: **live.py, presentation.py, timeframes.py and traffic.py
+must stay together** (copying only live.py from an older installation is not enough).
 
 ```sh
 python3 experimental/dashboard/live.py --log /path/to/events.csv
@@ -173,3 +174,17 @@ This expansion stays branch/PR-only until separately approved for merge/deploy.
 Future additive/versioned installation must copy all three runtime modules,
 with launcher rollback. Do not modify engine, gate, logs, Apache or services.
 Production validation must separately verify SHA, SSH PTY and service identities.
+
+## Opt-in daily visits estimate (review candidate)
+
+`--access-log SITE=PATH` adds explicitly mapped selected-vhost Apache Combined
+logs; no Apache discovery occurs by default. The card says **STIMA BROWSER**,
+never exact humans/people, with separate ambiguous, declared bot/tool, scanner
+and recognized internal groups. Absent/empty/unusable data says N/D; history is
+always UNKNOWN and detected input problems say INCOMPLETE. Today is the
+existing default Rome calendar day; other ranges retain daily breakdowns in
+`--once`/`--export`. Counts only, no identity/path/UA export or new tracking.
+
+See [metric, configuration, limits and privacy](../../docs/DASHBOARD_VISITS.md).
+Copy all **four** runtime modules: live.py, presentation.py, timeframes.py,
+traffic.py. Engine, gate and installation scripts are unchanged.

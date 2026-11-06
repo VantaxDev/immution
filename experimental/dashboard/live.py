@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Read-only live dashboard (Python 3.9+); never opens Apache logs or state."""
+"""Read-only live dashboard (Python 3.9+); opt-in selected-vhost traffic logs, never engine state."""
 import argparse
 import csv
 import gzip
@@ -16,6 +16,7 @@ import zlib
 from datetime import datetime, timezone
 from collections import Counter, defaultdict
 from timeframes import ROME, PRESETS, calendar_date, resolve_window
+from traffic import Traffic, source_spec
 from presentation import safe, savings_rows, panel_rows, dump_text, lines
 
 HEADER = 'timestamp,action,ip,host,request_uri,score,requests,errors_404,probes,user_agent,reasons'.split(',')
@@ -57,7 +58,8 @@ def regular_opener(path, flags):
 
 
 class Reader:
-    def __init__(self, paths, timeframe='today', start=None, end=None):
+    def __init__(self, paths, timeframe='today', start=None, end=None, access_logs=()):
+        self.traffic = Traffic(access_logs)
         self.paths = [Path(p) for p in paths]
         self.files = {}
         self.events = []
@@ -174,6 +176,7 @@ class Reader:
             self.warnings.append('NO VALID HEADER: empty or invalid source; coverage UNKNOWN')
         if any(s['buffer'] or s['discard'] for s in self.files.values()):
             self.warnings.append('PARTIAL trailing record pending')
+        self.traffic.refresh(self.window, now)
 
     def consume(self, chunk, state):
         try:
@@ -308,7 +311,7 @@ def screen_main(screen, curses, reader, args):
         if key in (ord('q'),ord('Q')):
             return
         if key in (9, ord('n'),ord('p'),curses.KEY_LEFT,curses.KEY_RIGHT):
-            ids = ['all'] + sorted(reader.summary()['sites'])
+            ids = ['all'] + sorted(set(reader.summary()['sites']) | {s for s, _ in reader.traffic.sources})
             if site not in ids:
                 ids.append(site)
             site = ids[(ids.index(site)+(-1 if key in (ord('p'),curses.KEY_LEFT) else 1)) % len(ids)]
@@ -340,6 +343,8 @@ def main(argv=None):
     p.add_argument('--interval',type=float,default=5,help='refresh seconds (2..3600)')
     p.add_argument('--site',default='all',help='untrusted claimed Host, not a verified vhost')
     p.add_argument('--log',action='append',help='CSV source; repeat (default global and prioris)')
+    p.add_argument('--access-log', action='append', default=[], metavar='SITE=PATH',
+                   help='opt-in selected-vhost Apache Combined log; repeat for distinct sites')
     p.add_argument('--timeframe', choices=PRESETS, help='default today; last7 includes today')
     p.add_argument('--start', type=calendar_date, help='custom inclusive YYYY-MM-DD, Rome midnight')
     p.add_argument('--end', type=calendar_date, help='custom EXCLUSIVE YYYY-MM-DD, Rome midnight')
@@ -369,7 +374,11 @@ def main(argv=None):
     if a.site != 'all' and normalized == 'unknown' and a.site != 'unknown':
         p.error('site must be a claimed hostname or unknown (never an IP or URL)')
     a.site = normalized
-    r = Reader(a.log or DEFAULTS, a.timeframe, a.start, a.end)
+    try:
+        access_logs = [source_spec(value) for value in a.access_log]
+        r = Reader(a.log or DEFAULTS, a.timeframe, a.start, a.end, access_logs)
+    except ValueError as exc:
+        p.error(str(exc))
     try:
         if not a.once and not a.export and sys.stdin.isatty() and sys.stdout.isatty() and os.environ.get('TERM') not in (None,'','dumb'):
             try:
