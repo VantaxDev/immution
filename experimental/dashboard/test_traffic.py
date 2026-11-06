@@ -99,6 +99,26 @@ class TrafficTests(unittest.TestCase):
         self.assertEqual(self.totals()['ambiguous'], 1)
         self.assertEqual(self.totals()['declared_bot'], 1)
 
+    def test_mapped_ipv4_bot_evidence_contaminates_native_address(self):
+        for browser_ip, bot_ip in (('192.0.2.1', '::ffff:192.0.2.1'),
+                                   ('::ffff:c000:201', '192.0.2.1')):
+            with self.subTest(browser_ip=browser_ip):
+                self.refresh(visit(ip=browser_ip) + row(ip=bot_ip, ua='curl/8.0'))
+                self.assertEqual(self.totals()['browser_like'], 0)
+                self.assertEqual(self.totals()['ambiguous'], 1)
+                self.assertEqual(self.totals()['declared_bot'], 1)
+
+    def test_mapped_ipv4_loopback_is_internal_not_browser(self):
+        self.refresh(visit(ip='::ffff:127.0.0.1'))
+        self.assertEqual(self.totals()['internal'], 1)
+        self.assertEqual(self.totals()['browser_like'], 0)
+
+    def test_mapped_ipv4_same_address_merges_but_native_ipv6_stays_distinct(self):
+        self.refresh(visit() + visit(ip='::ffff:c000:201'))
+        self.assertEqual(self.totals()['browser_like'], 1)
+        self.refresh(visit() + visit(ip='2001:db8::c000:201'))
+        self.assertEqual(self.totals()['browser_like'], 2)
+
     def test_redirect_assets_favicon_referrer_alone_no_extra_people(self):
         content = row(status=301) + row() + row('2026-11-06T10:00:54+00:00', path='/favicon.ico', ref='https://example.invalid/')
         content += row('2026-11-06T10:00:55+00:00', path='/style.css', ref='https://example.invalid/')

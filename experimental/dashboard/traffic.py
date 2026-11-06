@@ -179,6 +179,10 @@ class Traffic:
                 raise ValueError('format')
             ip, stamp, method, target, status, referrer, ua = match.groups()
             ip = ipaddress.ip_address(ip)
+            # Mapped IPv4 is the same address, not a new visitor or a way to
+            # separate bot/loopback evidence. Do not fold native IPv6 suffixes.
+            if isinstance(ip, ipaddress.IPv6Address) and ip.ipv4_mapped is not None:
+                ip = ip.ipv4_mapped
             stamp = timestamp(stamp)
             if not self.window.key[0] <= stamp < self.window.key[1]:
                 return

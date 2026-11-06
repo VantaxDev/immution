@@ -30,6 +30,9 @@ No installer, logging permissions, vhost, service or scheduler is changed.
 
 - Parse IP, timezone-aware Apache timestamp, method/target, status, referrer and
   UA from Combined records. Unsupported/malformed formats are explicit issues.
+  IPv4-mapped IPv6 addresses normalize to their IPv4 address before grouping,
+  bot/probe correlation and loopback classification. Native IPv6 stays distinct;
+  this is address normalization, not reconciliation of visitor identities.
 - Group within each mapped site and **Europe/Rome local calendar day** by
   process-salted IP+UA digests; inactivity **greater than 30 minutes** starts
   another group. At midnight groups reset rather than spanning day attribution.
