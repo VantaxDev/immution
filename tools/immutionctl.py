@@ -166,7 +166,12 @@ def command_report(events_file: str, top: int) -> int:
                 if ip:
                     addresses.add(ip)
                 try:
-                    timestamps.append(_parse_iso_timestamp(timestamp))
+                    parsed_timestamp = _parse_iso_timestamp(timestamp)
+                    # Gate timestamps include an offset. Do not guess a timezone
+                    # for legacy/custom rows or mix naive and aware datetimes.
+                    if parsed_timestamp.utcoffset() is None:
+                        raise ValueError("timestamp has no timezone")
+                    timestamps.append(parsed_timestamp)
                 except ValueError:
                     invalid_rows += 1
     except OSError as exc:
@@ -194,7 +199,8 @@ def command_report(events_file: str, top: int) -> int:
     else:
         print("  (none)")
     if invalid_rows:
-        print(f"warning: {invalid_rows} row(s) had an invalid timestamp")
+        print(f"warning: {invalid_rows} row(s) had an invalid timestamp "
+              "(missing timezone or malformed); excluded from time bounds only")
     if actions.get("blocked", 0):
         print("warning: blocked events are present; this was not a monitor-only period")
     print("review_required: classify the listed paths as hostile or legitimate before block mode")
