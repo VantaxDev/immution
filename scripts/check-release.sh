@@ -16,7 +16,7 @@ printf '%s\n' '[1/6] Python unit and regression tests'
 python3 -m unittest discover -s tests -v
 
 printf '%s\n' '[2/6] Python compilation'
-python3 -m py_compile src/immution.py tools/*.py
+python3 -m py_compile src/*.py tools/*.py
 
 printf '%s\n' '[3/6] Shell syntax'
 for script in scripts/*.sh; do bash -n "$script"; done

@@ -46,6 +46,8 @@ jobs:
         run: |
           sudo ./scripts/install.sh
           sudo systemctl is-active --quiet immution
+          sudo cmp src/route_mutation.py /opt/immution/route_mutation.py
+          (cd /tmp && python3 /opt/immution/immution.py --version)
           test "$(systemctl show immution -p User --value)" = immution
           pid="$(systemctl show immution -p MainPID --value)"
           test "$(ps -o user= -p "$pid" | xargs)" = immution
@@ -157,6 +159,7 @@ jobs:
           fi
           sudo cmp /tmp/immution-before-config /etc/immution/gate-config.php
           sudo cmp /tmp/immution-before-gate /opt/immution/gate.php
+          sudo cmp src/route_mutation.py /opt/immution/route_mutation.py
           sudo systemctl is-active --quiet immution
           sudo apache2ctl configtest
 
