@@ -3,6 +3,8 @@
 
 This is an estimate, not a measured counter. By default only rows whose action
 is ``blocked`` are counted; monitor-mode ``would_block`` rows are excluded.
+Missing or unrecognized actions are never evidence of a block, including
+with ``--action all`` (the union of ``blocked`` and ``would_block``).
 """
 
 import argparse
@@ -68,7 +70,9 @@ def main():
     estimated_allowed = 0
     with open(args.events, "r", encoding="utf-8", errors="replace", newline="") as handle:
         for row in csv.DictReader(handle):
-            action = row.get("action", "blocked")
+            action = row.get("action")
+            if action not in ("blocked", "would_block"):
+                continue
             if args.action != "all" and action != args.action:
                 continue
             path = row.get("request_uri", "/")
