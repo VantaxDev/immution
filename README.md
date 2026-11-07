@@ -318,7 +318,10 @@ Do not publish exploit details in a normal issue. Follow [SECURITY.md](SECURITY.
 
 ## License and professional support
 
-Immution is available under the [MIT License](LICENSE). The supported product is
+Immution is available under the [GNU General Public License version 3 only](LICENSE)
+(`GPL-3.0-only`). Copyright (c) 2026 Daniele Vantaggiato. See
+[licensing and attribution](docs/LICENSING.md) for the earlier MIT grant and
+notice-preservation requirements. The supported product is
 not feature-gated: professional installation, tuning and operational support
 are separate services. Project information is available at
 [immution.com](https://www.immution.com/).
