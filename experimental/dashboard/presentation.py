@@ -69,6 +69,8 @@ def dump_text(reader, site='all', status='unknown', top_n=5, baseline=None, bloc
             'TOTAL BLOCKED %d | unique IPs %d' % (c['blocked'], u.get('blocked', 0)),
             'TOTAL WOULD_BLOCK %d | unique IPs %d (allowed, not blocked)' % (c['would_block'], u.get('would_block', 0)),
             'IPs are not bots; distinct counts overlap. No IPs/queries displayed.']
+    if getattr(reader, 'traffic', None):
+        rows += reader.traffic.report(site)
     rows += savings_rows(c['blocked'], 0, baseline, block_bytes)
     rows += ['TOP %s CLAIMED HOST (untrusted; ranked by blocked records, ties by name)' % top_n,
              'CLAIMED HOST | BLOCKED | WOULD_BLOCK']
@@ -119,6 +121,8 @@ def panel_rows(reader, site, status, width, help_visible=False, baseline=None,
         add('IMMUTION | ' + reader.window.name + (' | ' + site if site != 'all' else ''), 'title')
         add(savings_rows(c['blocked'], 0, baseline, block_bytes)[0], 'metric')
         add('B %s | M %s (allowed)' % (c['blocked'], c['would_block']), 'metric')
+        if getattr(reader, 'traffic', None) and height >= 10:
+            add(reader.traffic.card(site)[0], 'section')
         add('[%s,' % reader.window.start.date())
         add(' %s) Europe/Rome' % reader.window.end.date())
         add('UNKNOWN | warnings %s issues %s' % (warnings, problems), 'section')
@@ -140,11 +144,15 @@ def panel_rows(reader, site, status, width, help_visible=False, baseline=None,
         add('As of %s | end exclusive' % reader.cutoff.astimezone(reader.window.start.tzinfo).isoformat(timespec='seconds'), 'dim')
         add('Scope: ' + site + ' [claimed Host; UNTRUSTED]')
         # Three ASCII rows only if both width and actual remaining height allow.
-        big_width = width if height >= 20 + top_n and not help_visible else 0
+        traffic_rows = len(reader.traffic.card(site)) if getattr(reader, 'traffic', None) else 0
+        big_width = width if height >= 20 + top_n + traffic_rows and not help_visible else 0
         for text in savings_rows(c['blocked'], big_width, baseline, block_bytes):
             add(text, 'metric')
         add('TOTAL BLOCKED %s | unique IPs %s' % (c['blocked'], u.get('blocked', 0)), 'metric')
         add('TOTAL MONITOR %s | unique IPs %s (allowed; not blocked)' % (c['would_block'], u.get('would_block', 0)), 'metric')
+        if getattr(reader, 'traffic', None):
+            for index, text in enumerate(reader.traffic.card(site)):
+                add(text, 'section' if index == 0 else 'dim')
         if help_visible:
             add('HELP / READ ONLY', 'section')
             for text in ('1 today; 2 yesterday; 3 last7 incl today; 4 previous calendar week',
