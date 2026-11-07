@@ -15,13 +15,25 @@ import statistics
 from collections import defaultdict
 
 
+def non_negative_bytes(value):
+    try:
+        number = int(value)
+    except ValueError:
+        raise argparse.ArgumentTypeError('must be a non-negative integer')
+    if number < 0:
+        raise argparse.ArgumentTypeError('must be a non-negative integer')
+    return number
+
+
 def parse_args():
     parser = argparse.ArgumentParser(description="Estimate bandwidth avoided by Immution")
     parser.add_argument("--events", required=True, help="Immution events.csv")
     parser.add_argument("--access", nargs="+", required=True, help="Apache logs or glob patterns")
     parser.add_argument("--action", choices=["blocked", "would_block", "all"], default="blocked")
-    parser.add_argument("--block-bytes", type=int, default=2500, help="measured block page size")
-    parser.add_argument("--fallback-bytes", type=int, default=50000, help="assumed response size")
+    parser.add_argument("--block-bytes", type=non_negative_bytes, default=2500,
+                        help="measured block page size (non-negative bytes)")
+    parser.add_argument("--fallback-bytes", type=non_negative_bytes, default=50000,
+                        help="assumed response size (non-negative bytes)")
     return parser.parse_args()
 
 
