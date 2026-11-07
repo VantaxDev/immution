@@ -18,13 +18,18 @@ fi
 # can make PHP fail on a missing auto_prepend_file during uninstall.
 backup_dir="$(mktemp -d /tmp/immution-uninstall.XXXXXXXX)"
 restore_ini() {
-    status=$?
-    trap - ERR
+    status=${1:-$?}
+    trap - ERR HUP INT TERM
     for ini in "${ini_files[@]}"; do
         if [[ -f "$backup_dir$ini" ]]; then
             cp -a -- "$backup_dir$ini" "$ini"
         fi
     done
+    # A signal can arrive after Apache has already accepted the detached config.
+    # Reapply the restored prepend before returning with the app still installed.
+    if ! { apache2ctl configtest && systemctl reload apache2; }; then
+        printf 'Restored prepend could not be reloaded; manual Apache recovery required.\n' >&2
+    fi
     printf 'Apache detach failed; installation retained. Snapshot: %s\n' "$backup_dir" >&2
     exit "$status"
 }
@@ -32,6 +37,9 @@ shopt -s nullglob
 ini_files=(/etc/php/*/apache2/conf.d/99-immution.ini)
 shopt -u nullglob
 trap restore_ini ERR
+trap 'restore_ini 129' HUP
+trap 'restore_ini 130' INT
+trap 'restore_ini 143' TERM
 for ini in "${ini_files[@]}"; do
     if grep -q '^auto_prepend_file = /opt/immution/gate.php$' "$ini"; then
         cp -a --parents -- "$ini" "$backup_dir"
@@ -41,7 +49,7 @@ done
 
 apache2ctl configtest
 systemctl reload apache2
-trap - ERR
+trap - ERR HUP INT TERM
 rm -rf -- "$backup_dir"
 
 systemctl disable --now immution

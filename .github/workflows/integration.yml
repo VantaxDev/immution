@@ -24,6 +24,15 @@ jobs:
       - name: Run source checks
         run: ./scripts/check-release.sh
 
+      - name: Disposable-prefix lifecycle and local report pipelines
+        env:
+          IMMUTION_LIFECYCLE_EVIDENCE: ${{ runner.temp }}/immution-prefix-evidence
+          IMMUTION_PIPELINE_EVIDENCE: ${{ runner.temp }}/immution-pipeline-evidence
+        run: |
+          python3 tests/acceptance/installer_prefix.py
+          python3 tests/acceptance/pipeline_compatibility.py
+          python3 tests/acceptance/php_pipeline.py
+
       - name: Existing auto_prepend_file stops before changes
         run: |
           printf '%s\n' '<?php // existing application bootstrap' > /tmp/existing-prepend.php

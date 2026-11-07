@@ -149,14 +149,16 @@ for target in "${restore_targets[@]}"; do
         cp -a --parents -- "$target" "$transaction_dir"
     fi
 done
+had_installation=false
+[[ -d "$INSTALL_DIR" ]] && had_installation=true
 was_active=false
 was_enabled=false
 systemctl is-active --quiet immution && was_active=true
 systemctl is-enabled --quiet immution && was_enabled=true
 
 rollback() {
-    status=$?
-    trap - ERR
+    status=${1:-$?}
+    trap - ERR HUP INT TERM
     printf 'Installation failed; rolling back.\n' >&2
     systemctl stop immution >/dev/null 2>&1 || true
     for target in "${restore_targets[@]}"; do
@@ -168,7 +170,7 @@ rollback() {
     if [[ -n "$backup_dir" && -d "$backup_dir" ]]; then
         rm -rf -- "$INSTALL_DIR"
         mv -- "$backup_dir" "$INSTALL_DIR"
-    elif [[ -z "$backup_dir" ]]; then
+    elif ! $had_installation; then
         rm -rf -- "$INSTALL_DIR"
     fi
     systemctl daemon-reload >/dev/null 2>&1 || true
@@ -185,10 +187,16 @@ rollback() {
     exit "$status"
 }
 trap rollback ERR
+trap 'rollback 129' HUP
+trap 'rollback 130' INT
+trap 'rollback 143' TERM
 
 if [[ -d "$INSTALL_DIR" ]]; then
-    backup_dir="${INSTALL_DIR}.backup-${timestamp}"
-    mv -- "$INSTALL_DIR" "$backup_dir"
+    # Reserve a unique container even for upgrades in the same second. The
+    # payload exists only after mv succeeds, so failed/interrupted moves cannot
+    # mistake an empty reserved directory for a restorable installation.
+    backup_dir="$(mktemp -d "${INSTALL_DIR}.backup-${timestamp}.XXXXXXXX")/app"
+    mv -T -- "$INSTALL_DIR" "$backup_dir"
 fi
 if [[ -f "$SERVICE_FILE" ]]; then
     service_backup="${SERVICE_FILE}.backup-${timestamp}"
@@ -242,7 +250,7 @@ fi
 # the command-line default when the preserved gate is actually blocking.
 MODE="$(php -r '$c = require "/etc/immution/gate-config.php"; echo isset($c["mode"]) && $c["mode"] === "block" ? "block" : "monitor";')"
 
-trap - ERR
+trap - ERR HUP INT TERM
 rm -rf -- "$transaction_dir"
 if [[ -n "$service_backup" ]]; then
     rm -f -- "$service_backup"
