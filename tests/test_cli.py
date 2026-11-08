@@ -4,6 +4,8 @@ import importlib.util
 import io
 import json
 import os
+import subprocess
+import sys
 import tempfile
 import unittest
 from pathlib import Path
@@ -115,6 +117,31 @@ class CliTests(unittest.TestCase):
         )
         with self.assertRaises(ValueError):
             immutionctl._parse_iso_timestamp("not-a-timestamp")
+
+    def test_report_rejects_oversized_csv_without_traceback_or_partial_report(self):
+        for oversized_header in (False, True):
+            with self.subTest(oversized_header=oversized_header):
+                events = Path(self.tempdir.name) / "oversized.csv"
+                large_field = "x" * (csv.field_size_limit() + 1)
+                if oversized_header:
+                    content = large_field + "\n"
+                else:
+                    content = ("timestamp,action,ip,request_uri\n"
+                               "2026-07-22T10:00:00Z,would_block,192.0.2.50,/ok\n"
+                               "2026-07-22T10:00:01Z,would_block,192.0.2.50,/" +
+                               large_field + "\n")
+                events.write_text(content, encoding="utf-8")
+                before = events.read_bytes()
+                result = subprocess.run(
+                    [sys.executable, str(MODULE_PATH), "report", "--events", str(events)],
+                    stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                    universal_newlines=True)
+                self.assertEqual(result.returncode, 1)
+                self.assertEqual(result.stdout, "")
+                self.assertIn("cannot parse CSV", result.stderr)
+                self.assertNotIn("Traceback", result.stderr)
+                self.assertNotIn("192.0.2.50", result.stderr)
+                self.assertEqual(events.read_bytes(), before)
 
     def test_report_mixed_timezones_keeps_counts_and_skips_ambiguous_dates(self):
         cases = (

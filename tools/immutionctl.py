@@ -174,6 +174,9 @@ def command_report(events_file: str, top: int) -> int:
                     timestamps.append(parsed_timestamp)
                 except ValueError:
                     invalid_rows += 1
+    except csv.Error as exc:
+        print(f"cannot parse CSV {events_file}: {exc}", file=sys.stderr)
+        return 1
     except OSError as exc:
         print(f"cannot read {events_file}: {exc}", file=sys.stderr)
         return 1
