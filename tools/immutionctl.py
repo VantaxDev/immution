@@ -116,7 +116,9 @@ def _display_path(value: str) -> str:
         parsed = urlsplit(value)
         path = parsed.path or "/"
     except ValueError:
-        path = value.split("?", 1)[0] or "/"
+        # A malformed authority may contain credentials or an address. Never
+        # fall back to displaying the unparsed URI, even without its query.
+        path = "(invalid URI)"
     return path[:160]
 
 

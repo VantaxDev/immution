@@ -73,6 +73,36 @@ class CliTests(unittest.TestCase):
         self.assertNotIn("192.0.2.50", report)
         self.assertNotIn("secret=value", report)
 
+    def test_report_malformed_authority_does_not_disclose_raw_uri(self):
+        events = Path(self.tempdir.name) / "malformed-uri.csv"
+        uris = [
+            "https://private-user:private-password@[2001:db8::50/private?token=private-token",
+            "//[2001:db8::50/private#private-fragment",
+            "https://private-user:private-password@example.test/safe?token=private-token#private-fragment",
+        ]
+        with events.open("w", encoding="utf-8", newline="") as handle:
+            writer = csv.DictWriter(handle, fieldnames=[
+                "timestamp", "action", "ip", "request_uri"])
+            writer.writeheader()
+            for uri in uris:
+                writer.writerow({"timestamp": "2026-07-22T10:00:00Z",
+                                 "action": "would_block", "ip": "192.0.2.50",
+                                 "request_uri": uri})
+        before = events.read_bytes()
+        with contextlib.redirect_stdout(io.StringIO()) as output:
+            self.assertEqual(immutionctl.command_report(str(events), 10), 0)
+        report = output.getvalue()
+        self.assertIn("events: 3", report)
+        self.assertIn("would_block: 3", report)
+        self.assertIn("unique_addresses: 1", report)
+        self.assertIn("     2  (invalid URI)", report)
+        self.assertIn("     1  /safe", report)
+        for sensitive in ("private-user", "private-password", "2001:db8::50",
+                          "192.0.2.50", "example.test", "private-token",
+                          "private-fragment", "/private"):
+            self.assertNotIn(sensitive, report)
+        self.assertEqual(events.read_bytes(), before)
+
     def test_explain_distinguishes_cumulative_404s_from_burst_and_identity(self):
         ip = "192.0.2.75"
         path = self.write_state(ip)
