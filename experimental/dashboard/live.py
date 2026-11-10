@@ -286,16 +286,19 @@ def screen_main(screen, curses, reader, args):
     except curses.error:
         pass
     site, show_help = args.site, False
+    view = getattr(args, 'view', 'auto')
+    if view not in ('gate', 'traffic'):
+        view = 'traffic' if reader.traffic.sources else 'gate'
     due, status = 0, 'unknown'
     while True:
         if time.monotonic() >= due:
             reader.refresh()
-            status = health()
+            status = 'DEMO - no service probes' if getattr(reader, 'demo', False) else health()
             due = time.monotonic() + args.interval
         h, w = screen.getmaxyx()
         width = max(1, w - 1)
         rows = panel_rows(reader, site, status, width, show_help,
-                          args.baseline_bytes, args.block_bytes, height=h, top_n=args.top)
+                          args.baseline_bytes, args.block_bytes, height=h, top_n=args.top, view=view)
         styles = {'normal': base, 'title': base | curses.A_BOLD,
                   'section': base | curses.A_BOLD | curses.A_UNDERLINE,
                   'selected': base | curses.A_BOLD, 'metric': base | curses.A_BOLD,
@@ -319,6 +322,8 @@ def screen_main(screen, curses, reader, args):
             site = 'all'
         elif key == ord('?'):
             show_help = not show_help
+        elif key == ord('v'):
+            view = 'gate' if view == 'traffic' else 'traffic'
         elif key in tuple(map(ord, '1234t')):
             if key == ord('t'):
                 index = (PRESETS.index(reader.timeframe) + 1) % len(PRESETS) if reader.timeframe in PRESETS else 0
@@ -340,6 +345,8 @@ def save_export(path, text):
 def main(argv=None):
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument('--once',action='store_true')
+    p.add_argument('--view', choices=('auto', 'traffic', 'gate'), default='auto',
+                   help='interactive initial view: traffic when access logs are mapped, otherwise gate; v toggles')
     p.add_argument('--interval',type=float,default=5,help='refresh seconds (2..3600)')
     p.add_argument('--site',default='all',help='untrusted claimed Host, not a verified vhost')
     p.add_argument('--log',action='append',help='CSV source; repeat (default global and prioris)')

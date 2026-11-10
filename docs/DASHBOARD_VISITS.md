@@ -67,9 +67,17 @@ The existing half-open local-day/range resolver is reused. Local midnights use
 Europe/Rome timezone transitions, including 23-hour and 25-hour days. Ordering,
 timeouts, range checks and generation cutoff use UTC instants; repeated local
 hours remain distinct. The current generation cutoff is exclusive. The compact
-card shows the latest local date with observed records in the selected range;
+card in the gate-event view shows the latest local date with observed records in the selected range;
 `--once`/`--export` lists each observed date per site. No data for a day is not
 synthesized as zero. Day and exact range remain visible.
+
+The traffic-first interactive view instead summarizes **all observed groups in
+the selected period**, with a bounded recent-day table and mapped-site
+comparison. `v` switches views without changing site/period. Counts remain
+groups, not unique people across dates/sites. The daily table uses N/D on dates
+without usable records, not invented zeros. See [LIVE.md](../experimental/dashboard/LIVE.md#traffic-first-view)
+for navigation, missing-metric diagnosis, freshness caveats and a reproducible
+explicit DEMO of the actual renderer.
 
 History/coverage are **always UNKNOWN**. First/last record and snapshot time
 are evidence, not proof of logging continuity or freshness. Empty, absent,

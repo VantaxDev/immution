@@ -245,6 +245,36 @@ class Traffic:
         self._summary = dict(counts=counts, records=records, first=first, last=last)
         return self._summary
 
+    def overview(self, site='all'):
+        """Counts-only rollups, never identities or a total-minus-bots estimate.
+
+        Groups may be summed across sites/days, but are NOT deduplicated people.
+        A mapped source without usable records remains distinguishable from zero.
+        """
+        summary = self.summary()
+        labels = [s for s, _ in self.sources if site == 'all' or site == s]
+        daily, sites = {}, {}
+        for label in labels:
+            sites[label] = dict(counts=Counter(), requests=0, first=None, last=None)
+        for (label, day), requests in summary['records'].items():
+            if label not in sites:
+                continue
+            entry = daily.setdefault(day, dict(counts=Counter(), requests=0, first=None, last=None))
+            key = (label, day)
+            for target in (entry, sites[label]):
+                target['counts'].update(summary['counts'][key])
+                target['requests'] += requests
+                first, last = summary['first'][key], summary['last'][key]
+                target['first'] = min(target['first'], first) if target['first'] else first
+                target['last'] = max(target['last'], last) if target['last'] else last
+        counts = Counter()
+        for entry in sites.values():
+            counts.update(entry['counts'])
+        return dict(counts=counts, requests=sum(v['requests'] for v in sites.values()),
+                    daily=daily, sites=sites,
+                    last=max((v['last'] for v in sites.values() if v['last']), default=None),
+                    issues=sum(v for (label, _), v in self.issues.items() if label in labels))
+
     def report(self, site='all'):
         rows = ['VISITE / STIMA SESSIONI BROWSER (non persone; non umani verificati)',
                 'Metric: IP+UA inactivity >30min, reset at local midnight; 2 page GET200 >=10s apart + same-site referrer.',
@@ -253,6 +283,11 @@ class Traffic:
                 'Traffic coverage UNKNOWN always; bounded prefix scan, not continuous history. Counts are observed only.']
         if not self.sources:
             return rows + ['STIMA BROWSER: N/D | no selected-vhost access log configured (gate events cannot count visits).']
+        overview = self.overview(site)
+        if overview['requests']:
+            count = overview['counts']
+            rows.append('PERIODO / gruppi osservati (non unici tra siti/giorni): browser %s | ambiguous %s | declared bot/tool %s | scanner %s | internal %s | HTTP requests %s' %
+                        (count['browser_like'], count['ambiguous'], count['declared_bot'], count['scanner'], count['internal'], overview['requests']))
         summary = self.summary()
         for label, _ in self.sources:
             if site != 'all' and label != site:
