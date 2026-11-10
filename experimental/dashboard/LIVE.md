@@ -39,6 +39,7 @@ label, never a verified site identity or proof of a protected site.
 - 1: today; 2: yesterday; 3: last7; 4: previous calendar week.
 - t: cycle presets (from a custom range, return to today).
 - Tab / n / p / left / right: claimed Host filter; 0: all Hosts.
+- v: switch traffic / gate-event views (same site and period).
 - r: bounded refresh; ?: help; q: quit.
 
 --site example.org selects an untrusted claimed Host, not a trusted vhost.
@@ -46,6 +47,70 @@ IP/URL scope arguments are rejected; unknown selects rejected/non-domain claims.
 Scope is explicit at 80x24; tiny views can abbreviate it. Default colors are
 inherited from the terminal, including SSH light/dark themes. No palette
 redefinition or forced background; curses restores terminal state.
+
+## Traffic-first view
+
+With at least one `--access-log SITE=PATH`, the interactive dashboard now opens
+on **TRAFFICO**. Otherwise the existing gate-event view remains the default.
+Use `v` to switch, or `--view traffic` / `--view gate` to choose the initial
+screen. `--view` changes only interactive presentation; `--once`/`--export`
+still contain the full sanitized report for both independent data sources.
+
+```sh
+python3 experimental/dashboard/live.py --log /path/to/events.csv \
+  --access-log example.org=/path/to/example.org.access.log --timeframe last7
+```
+
+The primary KPI is **VISITE / STIMA BROWSER**, a conservative group count
+compatible with browsing, **not verified humans, unique visitors or a calibrated
+probability**. The heuristic is unchanged: see [DASHBOARD_VISITS.md](../../docs/DASHBOARD_VISITS.md).
+Ambiguous groups, declared bot/tool UAs, scanner groups and internal groups
+stay separate. HTTP requests are shown separately from session groups.
+
+The screen summarizes the **selected period**, not only its latest observed
+day, then shows a bounded daily table with relative browser-count bars and a
+mapped-site comparison. It shows at most the last seven selected dates (fewer
+at 80x24 to leave space for sites); omission is stated. `--once` lists all
+observed site/dates. There is no interpolation: absent dates/sources are N/D;
+zero browser groups is shown only when that scope has usable HTTP records.
+Period/site totals sum observed groups; they do not deduplicate persons across
+days or sites. Site labels come from operator log mappings, not request Host.
+`n/p` visits mapped sites including sites with no gate events or no records.
+
+Last-record age is measured **at the snapshot**. More than 15 minutes says
+`non recente`, a display convention, not a service-health or logging-continuity
+test (historical windows will naturally look old). Coverage is always UNKNOWN;
+detected input problems add INCOMPLETE. Gate B/M counts remain a separate
+untrusted claimed-Host scope. No blocked/visit percentage is calculated because
+the gate and vhost log streams are not interchangeable.
+
+### Safe local demonstration
+
+No server access, packages or service changes are needed:
+
+```sh
+python3 experimental/dashboard/demo_traffic.py        # real curses, DEMO
+python3 experimental/dashboard/demo_traffic.py --once # actual 80x24 rows
+python3 experimental/dashboard/demo_traffic.py --preview /tmp/immution-demo-new
+# Open /tmp/immution-demo-new/desktop.html (or stretto.html) locally.
+```
+
+Demo files use reserved names/addresses, a fixed 10 November 2026 snapshot,
+temporary private fixture logs and no systemctl/network probes. All screens
+and reports say DEMO. The optional HTML files are static pictures of actual
+terminal renderer rows, not a new web application or live dashboard. Preview
+directory must not already exist; files are private (0600, directory 0700).
+Do not host production exports publicly.
+
+### If the visits metric is absent
+
+Merged source does not update an installed launcher. Check the **documented
+installed dashboard revision** before assuming an aggregation bug; old copies
+may predate traffic.py. This feature needs all four runtime modules together.
+Even a current version cannot derive visits from gate events: selected-vhost
+Combined logs must be explicitly mapped with `--access-log SITE=PATH`.
+`--view traffic` explains an unmapped/empty selection with N/D. No automatic
+Apache discovery, permissions change or production probe is performed.
 
 ## Calendar windows
 
