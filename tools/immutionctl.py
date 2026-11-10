@@ -116,7 +116,9 @@ def _display_path(value: str) -> str:
         parsed = urlsplit(value)
         path = parsed.path or "/"
     except ValueError:
-        path = value.split("?", 1)[0] or "/"
+        # A malformed authority may contain credentials or an address. Never
+        # fall back to displaying the unparsed URI, even without its query.
+        path = "(invalid URI)"
     return path[:160]
 
 
@@ -174,6 +176,9 @@ def command_report(events_file: str, top: int) -> int:
                     timestamps.append(parsed_timestamp)
                 except ValueError:
                     invalid_rows += 1
+    except csv.Error as exc:
+        print(f"cannot parse CSV {events_file}: {exc}", file=sys.stderr)
+        return 1
     except OSError as exc:
         print(f"cannot read {events_file}: {exc}", file=sys.stderr)
         return 1

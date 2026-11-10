@@ -91,11 +91,12 @@ h1{font-size:18px;color:#a6d9bd}p{max-width:76ch;color:#aab7c5}pre{margin-top:24
         path.chmod(0o600)
 
 
-def main():
+def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--once', action='store_true')
     parser.add_argument('--preview', type=Path, metavar='NEW_DIRECTORY')
-    args = parser.parse_args()
+    parser.add_argument('--view', choices=('auto', 'traffic', 'gate'), default='traffic')
+    args = parser.parse_args(argv)
     with tempfile.TemporaryDirectory(prefix='immution-DEMO-') as directory:
         reader = make_reader(Path(directory))
         try:
@@ -103,12 +104,12 @@ def main():
                 preview(reader, args.preview)
                 print('DEMO preview:', args.preview.resolve() / 'desktop.html')
             elif args.once or not sys.stdin.isatty() or not sys.stdout.isatty() or os.environ.get('TERM') in (None, '', 'dumb'):
-                print('\n'.join(text for text, _ in panel_rows(reader, 'all', 'DEMO', 79, height=24)))
+                print('\n'.join(text for text, _ in panel_rows(reader, 'all', 'DEMO', 79, height=24, view=args.view)))
             else:
                 import curses
                 # No production files, systemctl, network or recurring process.
                 curses.wrapper(screen_main, curses, reader, SimpleNamespace(
-                    site='all', view='traffic', interval=5, top=5, baseline_bytes=None, block_bytes=None))
+                    site='all', view=args.view, interval=5, top=5, baseline_bytes=None, block_bytes=None))
         finally:
             reader.close()
 

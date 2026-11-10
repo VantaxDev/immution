@@ -89,10 +89,17 @@ records, duplicate rotations and upstream log loss cannot always be detected.
 Bounded traffic scan: 8 MiB decompressed per changed snapshot across sources,
 100000 retained selected-range records, 16 sites, 32 discovered files per site,
 128 files overall and 64 KiB per line. Active then recognized numeric rotations
-(including gzip) are read; overlapping .N and .N.gz prefer .N, shared inodes
+(including gzip) are read in numeric suffix order (.1, .2, ... .10); when the
+per-site file cap is exceeded, the lowest suffixes are retained independently
+of directory enumeration order, with a file_limit warning. Numeric suffixes
+are a logrotate convention, not verified event-time ordering. Compression
+overlap is resolved before the file cap; overlapping .N and .N.gz prefer .N, shared inodes
 are not counted twice. No unbounded full-history read to manufacture complete
 coverage. Large files are scanned from the **prefix**; recent records can be
-outside the budget. Errors/caps are visible, not silently extrapolated.
+outside the budget. Errors/caps are visible, not silently extrapolated. The traffic viewport names
+source issue codes; when read_budget is reached it explicitly explains the
+8 MiB prefix scan and possibly omitted recent records. Full issue counts remain
+available via --once / --export. Narrow screens may shorten this explanation.
 Regular-file/nonblocking open with opened-inode checks prevents FIFO hangs.
 Gzip errors do not prevent other healthy sources from contributing.
 

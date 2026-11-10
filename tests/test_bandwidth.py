@@ -11,6 +11,36 @@ TOOL = Path(__file__).resolve().parents[1] / 'tools' / 'immution_bandwidth.py'
 
 
 class BandwidthTests(unittest.TestCase):
+    def test_negative_byte_assumptions_are_rejected_before_reading_inputs(self):
+        for option in ('--block-bytes', '--fallback-bytes'):
+            with self.subTest(option=option), tempfile.TemporaryDirectory() as directory:
+                missing = str(Path(directory) / 'missing')
+                result = subprocess.run(
+                    [sys.executable, str(TOOL), '--events', missing,
+                     '--access', missing, option, '-1'],
+                    stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                    universal_newlines=True)
+                self.assertEqual(result.returncode, 2, result.stderr)
+                self.assertIn(option, result.stderr)
+                self.assertIn('must be a non-negative integer', result.stderr)
+                self.assertEqual(result.stdout, '')
+
+    def test_zero_byte_assumptions_are_valid(self):
+        with tempfile.TemporaryDirectory() as directory:
+            events = Path(directory) / 'events.csv'
+            access = Path(directory) / 'access.log'
+            events.write_text('request_uri,action\n/unknown,blocked\n')
+            access.write_text('')
+            result = subprocess.run(
+                [sys.executable, str(TOOL), '--events', str(events),
+                 '--access', str(access), '--block-bytes', '0',
+                 '--fallback-bytes', '0'],
+                stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                universal_newlines=True)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertIn('events (blocked): 1', result.stdout)
+            self.assertIn('estimated avoided: 0.00 MiB', result.stdout)
+
     def run_estimate(self, actions, selection='blocked', with_action=True):
         with tempfile.TemporaryDirectory() as directory:
             events = Path(directory) / 'events.csv'
