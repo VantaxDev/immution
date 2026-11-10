@@ -345,6 +345,7 @@ def save_export(path, text):
 def main(argv=None):
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument('--once',action='store_true')
+    p.add_argument('--demo', action='store_true', help='DATI SINTETICI only; no production sources or service probes')
     p.add_argument('--view', choices=('auto', 'traffic', 'gate'), default='auto',
                    help='interactive initial view: traffic when access logs are mapped, otherwise gate; v toggles')
     p.add_argument('--interval',type=float,default=5,help='refresh seconds (2..3600)')
@@ -360,6 +361,11 @@ def main(argv=None):
     p.add_argument('--baseline-bytes', type=int, help='explicit estimated average unblocked response bytes')
     p.add_argument('--block-bytes', type=int, help='explicit known average block response bytes')
     a = p.parse_args(argv)
+    if a.demo:
+        if a.log or a.access_log or a.export or a.start or a.end or a.timeframe or a.site != 'all' or a.baseline_bytes is not None or a.block_bytes is not None:
+            p.error('--demo cannot be combined with live sources, exports, filters or byte assumptions')
+        from demo_traffic import main as demo_main
+        return demo_main((['--once'] if a.once else []) + ['--view', a.view])
     if (a.baseline_bytes is None) != (a.block_bytes is None):
         p.error('provide both --baseline-bytes and --block-bytes, or neither')
     if any(v is not None and not 0 <= v <= 10**15 for v in (a.baseline_bytes, a.block_bytes)):

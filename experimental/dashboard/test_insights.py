@@ -52,11 +52,13 @@ class InsightsTests(unittest.TestCase):
 
     def test_default_primary_metrics_stale_record_and_missing_sources(self):
         text = self.panel()
-        for wanted in ('IMMUTION / TRAFFICO', 'STIMA BROWSER 3 osservate', 'Ambigue 1',
-                       'Bot/tool UA 1', 'Scanner 1', 'Interne 1', 'Richieste HTTP 10',
+        for wanted in ('IMMUTION / TRAFFICO', 'STIMA BROWSER 3 osservate',
+                       'Richieste HTTP 10', 'GRUPPI OSSERVATI', '#=1',
                        'non recente', 'UNKNOWN / INCOMPLETE', 'problemi 1',
-                       'missing.invalid', 'N/D', 'Gate != log vhost'):
+                       'missing_or_unreadable', 'N/D', 'Gate != log vhost'):
             self.assertIn(wanted, text)
+        for label in ('Ambigue', 'Bot/tool UA', 'Scanner', 'Interne'):
+            self.assertRegex(text, label + r' +1 \|#')
         self.assertNotIn('unique', text)
         self.assertNotIn('probabilita', text)
         selected = self.panel(SITE)
@@ -173,7 +175,7 @@ class InsightsTests(unittest.TestCase):
         master, slave = pty.openpty()
         original = termios.tcgetattr(slave)
         fcntl.ioctl(slave, termios.TIOCSWINSZ, struct.pack('HHHH', 24, 80, 0, 0))
-        proc = subprocess.Popen([sys.executable, str(Path(live.__file__).with_name('demo_traffic.py'))],
+        proc = subprocess.Popen([sys.executable, str(Path(live.__file__)), '--demo'],
                                 stdin=slave, stdout=slave, stderr=slave,
                                 env=dict(os.environ, TERM='xterm-256color'))
         output = bytearray()
@@ -193,10 +195,11 @@ class InsightsTests(unittest.TestCase):
             os.write(master, b'v'); receive(b'READ ONLY')
             os.write(master, b'v'); receive(b'TRAFFICO')
             os.write(master, b'n'); receive(b'archivio.invalid')
-            os.write(master, b'n'); receive(b'bottega.invalid')
+            os.write(master, b'n'); receive(b'bottega')  # curses may retain the unchanged .invalid suffix
             os.write(master, b'2'); receive(b'yesterday')
             os.write(master, b'?'); receive(b'HELP')
             os.write(master, b'?'); receive()
+            os.write(master, b'r'); receive()
             for h, w in ((14, 40), (8, 24), (24, 80)):
                 fcntl.ioctl(slave, termios.TIOCSWINSZ, struct.pack('HHHH', h, w, 0, 0))
                 proc.send_signal(signal.SIGWINCH)

@@ -253,3 +253,14 @@ existing default Rome calendar day; other ranges retain daily breakdowns in
 See [metric, configuration, limits and privacy](../../docs/DASHBOARD_VISITS.md).
 Copy all **four** runtime modules: live.py, presentation.py, timeframes.py,
 traffic.py. Engine, gate and installation scripts are unchanged.
+
+
+### ASCII bars and explicit demo
+
+Run `python3 experimental/dashboard/live.py --demo --once` for the real 80x24
+renderer with DATI SINTETICI, or omit --once for interactive demo. Category bars
+share a stated integer groups-per-# scale; '+' is a partial cell, '-' unused
+space. HTTP totals are not on the groups scale. Gate/top-Host bars scale B only;
+M is allowed monitor traffic. Other preserves hidden counts. Missing input is
+N/D without a bar; UNKNOWN/INCOMPLETE never disappear. Defaults inherit the SSH
+terminal theme. See [ASCII verification and actual output](../../docs/ASCII_DASHBOARD_20261110.md).

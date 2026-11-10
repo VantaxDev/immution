@@ -3,6 +3,8 @@
 ## Unreleased — completion candidate 2026-11-10
 
 - Integrate the traffic-first terminal dashboard and explicit synthetic demo.
+- Restyle terminal views with common-scale ASCII category/block bars, aligned
+  values, responsive layouts and --demo labelled DATI SINTETICI.
 - Reject negative bandwidth byte assumptions; handle CSV parser failures without
   traceback and redact malformed URI authorities in monitor reports.
 - Read dashboard rotations in numeric suffix order and retain the lowest

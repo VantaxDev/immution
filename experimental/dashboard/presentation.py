@@ -9,6 +9,43 @@ def safe(value):
     return ''.join(c if 32 <= ord(c) < 127 else '?' for c in str(value))
 
 
+def bar_chart(entries, width, unit):
+    """One linear integer scale for the whole chart; '+' is a partial cell.
+
+    None is unavailable, zero is an observed zero. Values always accompany bars.
+    Only the presentation is bounded; never change the underlying aggregates.
+    """
+    entries = list(entries)
+    width = max(1, width)
+    label_width = min(24, max((len(safe(label)) for label, _ in entries), default=1))
+    digits = max((len(str(value)) for _, value in entries if value is not None), default=3)
+    digits = max(3, digits)
+    label_width = max(1, min(label_width, width - digits - 6))
+    cells = max(0, min(28, width - label_width - digits - 5))
+    maximum = max((value for _, value in entries if value is not None), default=0)
+    step = max(1, (maximum + max(1, cells) - 1) // max(1, cells))
+    result = [('%s | #=%s | +=meno di # | -=vuoto | N/D=no dati' % (unit, step))[:width]]
+    for label, value in entries:
+        label = safe(label)
+        if len(label) > label_width:
+            label = label[:max(0, label_width - 1)] + '~'
+        number = 'N/D' if value is None else str(value)
+        bar = ''
+        if cells and value is not None:
+            full, remainder = divmod(value, step)
+            fill = '#' * full + ('+' if remainder else '')
+            bar = ' |' + fill.ljust(cells, '-') + '|'
+        result.append(('%-*s %*s%s' % (label_width, label, digits, number, bar))[:width])
+    return result
+
+
+def traffic_categories(overview):
+    c = overview['counts']
+    return [(label, c[key] if overview['requests'] else None) for label, key in
+            (('Browser', 'browser_like'), ('Ambigue', 'ambiguous'),
+             ('Bot/tool UA', 'declared_bot'), ('Scanner', 'scanner'), ('Interne', 'internal'))]
+
+
 DIGITS = {
     '0': (' _ ', '| |', '|_|'), '1': ('   ', '  |', '  |'),
     '2': (' _ ', ' _|', '|_ '), '3': (' _ ', ' _|', ' _|'),
@@ -60,7 +97,7 @@ def dump_text(reader, site='all', status='unknown', top_n=5, baseline=None, bloc
     s = reader.summary(site)
     c, u = s['counts'], s['unique']
     ranked, other, other_hosts = top_hosts(s, top_n, site)
-    rows = [('IMMUTION | DEMO / SYNTHETIC | READ ONLY' if getattr(reader, 'demo', False) else 'IMMUTION | LIVE LOGS | READ ONLY'),
+    rows = [('IMMUTION | DEMO / SYNTHETIC | DATI SINTETICI | READ ONLY' if getattr(reader, 'demo', False) else 'IMMUTION | LIVE LOGS | READ ONLY'),
             'Generated: ' + reader.cutoff.astimezone(timezone.utc).isoformat(),
             'Timeframe: ' + reader.window.name + ' | timezone: Europe/Rome',
             'Range [start, end): [%s, %s)' % (reader.window.start.isoformat(), reader.window.end.isoformat()),
@@ -70,8 +107,16 @@ def dump_text(reader, site='all', status='unknown', top_n=5, baseline=None, bloc
             'TOTAL WOULD_BLOCK %d | unique IPs %d (allowed, not blocked)' % (c['would_block'], u.get('would_block', 0)),
             'IPs are not bots; distinct counts overlap. No IPs/queries displayed.']
     if getattr(reader, 'traffic', None):
+        overview = reader.traffic.overview(site)
+        rows += ['GRUPPI OSSERVATI (non persone)',
+                 'Richieste HTTP %s (unita separata, non sulla scala gruppi)' %
+                 (overview['requests'] if overview['requests'] else 'N/D')]
+        rows += bar_chart(traffic_categories(overview), 79, 'gruppi')
         rows += reader.traffic.report(site)
     rows += savings_rows(c['blocked'], 0, baseline, block_bytes)
+    rows += ['BLOCCHI / CLAIMED HOST (untrusted; scala solo B, non M o gruppi)']
+    rows += bar_chart([(host, counts['blocked']) for host, counts in ranked] +
+                      [('Other', other['blocked'])], 79, 'B records')
     rows += ['TOP %s CLAIMED HOST (untrusted; ranked by blocked records, ties by name)' % top_n,
              'CLAIMED HOST | BLOCKED | WOULD_BLOCK']
     rows += ['%s | %d | %d' % (host, counts['blocked'], counts['would_block']) for host, counts in ranked]
@@ -114,7 +159,7 @@ def traffic_panel_rows(reader, site, width, height, help_visible=False):
     footer = 'q quit v blocchi n/p sito 0 tutti 1/2/3/4 periodo ? aiuto r refresh'
     if width < 58:
         footer = 'q quit v vista n/p sito t periodo'
-    marker = 'DEMO | ' if getattr(reader, 'demo', False) else ''
+    marker = 'DEMO / DATI SINTETICI | ' if getattr(reader, 'demo', False) else ''
     add('IMMUTION / TRAFFICO | ' + marker + reader.window.name, 'title')
     add('[%s, %s) Europe/Rome' % (reader.window.start.date(), reader.window.end.date()), 'dim')
     if height >= 18 and width >= 58:
@@ -125,12 +170,33 @@ def traffic_panel_rows(reader, site, width, height, help_visible=False):
     c, requests = overview['counts'], overview['requests']
     if height < 10:
         rows.clear()
-        add('IMMUTION / TRAFFICO' + (' / DEMO' if marker else ''), 'title')
+        add('IMMUTION / TRAFFICO' + (' / DEMO / DATI SINTETICI' if marker else ''), 'title')
         add('BROWSER %s gruppi' % (c['browser_like'] if requests else 'N/D'), 'metric')
         add('Non persone; UA falsificabili', 'dim')
-        add('Amb %s | Bot UA %s' % (c['ambiguous'], c['declared_bot']))
+        add('Amb %s | Bot UA %s' % (c['ambiguous'] if requests else 'N/D', c['declared_bot'] if requests else 'N/D'))
         add('HTTP %s' % (requests if requests else 'N/D'))
         add('UNKNOWN%s' % (' / INCOMPLETE' if overview['issues'] else ''), 'section')
+        return rows[:max(0, height - 1)] + [(safe(footer)[:width], 'section')]
+    if height < 18 or width < 58:
+        rows.clear()
+        add('IMMUTION / ' + ('DATI SINTETICI' if marker else 'TRAFFICO'), 'title')
+        add('[%s, %s) Roma' % (reader.window.start.date(), reader.window.end.date()), 'dim')
+        add('Sito: ' + site, 'section')
+        add('BROWSER %s gruppi | HTTP %s' %
+            (c['browser_like'] if requests else 'N/D', requests if requests else 'N/D'), 'metric')
+        add('Non persone; N/D != zero visite', 'dim')
+        add('UNKNOWN%s' % ('/INCOMPLETE' if overview['issues'] else ''), 'section')
+        if height >= 16 and overview['issue_counts'].get('read_budget'):
+            add('8 MiB prefisso: recenti poss. esclusi', 'dim')
+        if help_visible:
+            for text in ('HELP / READ ONLY', 'v vista; n/p sito; 0 tutti; t periodo',
+                         '1 oggi; 2 ieri; 3 ultimi7; 4 sett. prec.',
+                         '? chiudi aiuto; r refresh; q quit',
+                         'Scale per grafico, non persone'):
+                add(text)
+        else:
+            for text in bar_chart(traffic_categories(overview), width, 'gruppi'):
+                add(text)
         return rows[:max(0, height - 1)] + [(safe(footer)[:width], 'section')]
     if not overview['sites']:
         add('VISITE / STIMA BROWSER: N/D', 'metric')
@@ -144,13 +210,6 @@ def traffic_panel_rows(reader, site, width, height, help_visible=False):
     else:
         add('VISITE / STIMA BROWSER %s osservate' % c['browser_like'], 'metric')
         add('Non persone; non umani verificati. UA falsificabili.', 'dim')
-        if width >= 58:
-            add('Ambigue %s | Bot/tool UA %s | Scanner %s | Interne %s' %
-                (c['ambiguous'], c['declared_bot'], c['scanner'], c['internal']))
-        else:
-            add('Ambigue %s | Bot/tool UA %s' % (c['ambiguous'], c['declared_bot']))
-            if height >= 14:
-                add('Scanner %s | Interne %s' % (c['scanner'], c['internal']))
         add('Richieste HTTP %s | gruppi != richieste' % requests, 'metric')
         age = max(0, int((reader.cutoff - overview['last']).total_seconds()) // 60)
         add('Ultimo record %s (%sm fa)' %
@@ -166,6 +225,9 @@ def traffic_panel_rows(reader, site, width, height, help_visible=False):
         add('Copertura UNKNOWN%s | problemi %s%s' %
             (' / INCOMPLETE' if overview['issues'] else '', overview['issues'],
              ': ' + detail if detail else ''), 'section')
+    if not help_visible and height >= 18 and width >= 58:
+        for index, text in enumerate(bar_chart(traffic_categories(overview), width, 'GRUPPI OSSERVATI')):
+            add(text, 'section' if index == 0 else 'normal')
     if help_visible:
         add('HELP / READ ONLY', 'section')
         for text in ('v: traffico / blocchi; n/p o Tab: sito; 0: tutti',
@@ -182,17 +244,19 @@ def traffic_panel_rows(reader, site, width, height, help_visible=False):
         room = max(0, height - len(rows) - 3)
         if room >= 3:
             span = (reader.window.end.date() - reader.window.start.date()).days
-            days = min(span, 7, max(1, room - 7))
-            add('GIORNO       BROWSER  AMBIGUI BOT/UA    HTTP | andamento browser', 'section')
+            days = min(span, 7, max(1, room - 2))
             last_day = reader.window.end.date() - timedelta(days=1)
             days_to_show = [last_day - timedelta(days=i) for i in reversed(range(days))]
             maximum = max((overview['daily'].get(day, {}).get('counts', {}).get('browser_like', 0)
                            for day in days_to_show), default=0)
+            step = max(1, (maximum + 9) // 10)
+            add('GIORNO       BROWSER  AMBIGUI BOT/UA    HTTP | #=%s browser' % step, 'section')
             for day in days_to_show:
                 entry = overview['daily'].get(day)
                 if entry:
                     count = entry['counts']
-                    bar = '#' * max(1, round(count['browser_like'] / maximum * 10)) if count['browser_like'] and maximum else '-'
+                    full, remainder = divmod(count['browser_like'], step)
+                    bar = '#' * full + ('+' if remainder else '') if count['browser_like'] else '-'
                     add('%s %7s %8s %6s %7s | %s' % (day, count['browser_like'], count['ambiguous'], count['declared_bot'], entry['requests'], bar))
                 else:
                     add('%s     N/D      N/D    N/D     N/D | nessun record' % day)
@@ -239,7 +303,7 @@ def panel_rows(reader, site, status, width, help_visible=False, baseline=None,
         rows.append((text if len(text) <= width else text[:max(0, width - 1)] + '~', style))
     legend = 'q quit v traffico 1/2/3/4 periodo t cycle ? help r refresh'
     if height < 18 or width < 58:
-        add('IMMUTION | ' + ('DEMO | ' if getattr(reader, 'demo', False) else '') + reader.window.name + (' | ' + site if site != 'all' else ''), 'title')
+        add('IMMUTION | ' + ('DEMO / DATI SINTETICI | ' if getattr(reader, 'demo', False) else '') + reader.window.name + (' | ' + site if site != 'all' else ''), 'title')
         add(savings_rows(c['blocked'], 0, baseline, block_bytes)[0], 'metric')
         add('B %s | M %s (allowed)' % (c['blocked'], c['would_block']), 'metric')
         if getattr(reader, 'traffic', None) and height >= 10:
@@ -260,7 +324,7 @@ def panel_rows(reader, site, status, width, help_visible=False, baseline=None,
             add('Other B=%s M=%s' % (other['blocked'], other['would_block']))
         footer = 'q quit t range ? help'
     else:
-        add('IMMUTION / READ ONLY | ' + ('DEMO | ' if getattr(reader, 'demo', False) else '') + reader.window.name, 'title')
+        add('IMMUTION / READ ONLY | ' + ('DEMO / DATI SINTETICI | ' if getattr(reader, 'demo', False) else '') + reader.window.name, 'title')
         add('[%s, %s) Europe/Rome' % (reader.window.start.date(), reader.window.end.date()))
         add('As of %s | end exclusive' % reader.cutoff.astimezone(reader.window.start.tzinfo).isoformat(timespec='seconds'), 'dim')
         add('Scope: ' + site + ' [claimed Host; UNTRUSTED]')
@@ -285,17 +349,19 @@ def panel_rows(reader, site, status, width, help_visible=False, baseline=None,
         else:
             # Fixed rows after this block: Other + selftest + history + warnings
             # + issues + health + footer. Reserve a header and at least one row.
-            slots = max(0, min(top_n, height - len(rows) - 9))
+            slots = max(0, min(top_n, height - len(rows) - 10))
             ranked, other, other_hosts = top_hosts(s, slots, site)
-            add('TOP CLAIMED HOST / UNTRUSTED (blocked records, not protected sites)', 'section')
-            add('%-*s %8s %8s' % (max(8, width - 20), 'NAME (~ shortened)', 'BLOCKED', 'MONITOR'), 'dim')
+            add('TOP CLAIMED HOST / UNTRUSTED | B=blocked M=allowed', 'section')
+            entries = []
             for host, values in ranked:
-                name_width = max(8, width - 20)
-                name = host if len(host) <= name_width else host[:name_width - 1] + '~'
-                add('%s%-*s %8d %8d' % ('> ' if site == host else '  ', name_width - 2,
-                    name, values['blocked'], values['would_block']), 'selected' if site == host else 'normal')
-            if not ranked:
-                add('(no blocked Host rows; empty OR unavailable history)')
+                monitor = ' M=' + str(values['would_block'])
+                label_room = max(1, 24 - 2 - len(monitor))
+                label = host if len(host) <= label_room else host[:label_room-1] + '~'
+                entries.append((('> ' if site == host else '  ') + label + monitor, values['blocked']))
+            entries.append(('Other M=' + str(other['would_block']), other['blocked']))
+            for index, text in enumerate(bar_chart(entries, width, 'B records')):
+                selected = 1 <= index <= len(ranked) and ranked[index-1][0] == site
+                add(text, 'selected' if selected else 'normal')
             add('OTHER %s hosts incl hidden/monitor-only: B %s | M %s' %
                 (other_hosts, other['blocked'], other['would_block']))
         add('Selftest excluded B=%s M=%s (spoofable) | IPs != bots' %

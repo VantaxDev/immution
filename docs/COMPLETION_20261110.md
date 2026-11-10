@@ -21,6 +21,8 @@ The implementation scope for this completion is deliberately finite:
       than an arbitrary directory prefix. Resolve .N/.N.gz overlap before cap.
 - [x] Expose source-scoped issue names in the traffic viewport, or explain the
       8 MiB prefix limit and possibly omitted recent records when capped.
+- [x] Implement owner-requested ASCII restyling, common chart scales, responsive
+      viewport and explicit --demo with real --once output; preserve all fixes.
 - [x] Add synthetic failing-before/passing-after regressions and run local gates.
 - [ ] Promote a reviewed, CI-green candidate to main (separate merge decision).
 - [ ] Deploy this follow-up (separate operational decision; not part of coding).
@@ -41,7 +43,7 @@ Final local code verification:
 
 - `./scripts/check-release.sh`: PASS, including 58 core tests, Python compilation,
   every shell file, PHP syntax and PHP gate smoke, fixture config and systemd unit.
-- `python3 -m unittest discover -s experimental/dashboard -v`: 91 PASS, including
+- `python3 -m unittest discover -s experimental/dashboard -v`: 95 PASS, including
   real local synthetic PTY navigation/resize/terminal restoration and privacy,
   no-clobber export, DST/ranges, gzip and source-safety regressions.
 - `node experimental/dashboard/test_ui.cjs`: PASS.
@@ -50,7 +52,8 @@ Final local code verification:
 Hosted `tests` and `ubuntu-integration` must pass on the exact published head;
 local source tests do not establish old-runtime or live Apache integration.
 See the PR's checks for exact SHA-bound Python/PHP matrices and disposable
-Apache/lifecycle pipeline results. No production access or real logs used.
+Apache/lifecycle pipeline results. No production access or real logs used. The additional restyling verification
+and generated --once preview are in [ASCII_DASHBOARD_20261110.md](ASCII_DASHBOARD_20261110.md).
 
 ## Honest remaining boundaries
 
