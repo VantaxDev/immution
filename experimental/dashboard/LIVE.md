@@ -223,6 +223,13 @@ width suffice, never causing scrolling.
 
 ## Verification and deployment boundary
 
+Gate CSV discovery filters numeric rotation names (optionally `.gz`) before
+selecting at most 128 candidates per source, including the active file. Unrelated
+backup/temporary names do not consume slots or trigger a rotation-limit warning.
+Selection retains its existing lexicographic order; the global open-file cap,
+read budget and incremental inode tracking are unchanged. A real rotation limit
+still reports INCOMPLETE; this is not evidence of complete log history.
+
 ```sh
 python3 -m unittest discover -s experimental/dashboard -v
 node experimental/dashboard/test_ui.cjs

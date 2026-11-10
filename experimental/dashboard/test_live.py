@@ -129,6 +129,25 @@ finally:
         other.refresh(NOW)
         self.assertEqual(len(other.events),3)
 
+    def test_unrelated_rotation_lookalikes_do_not_hide_valid_logs(self):
+        self.p.write_bytes(encoded([row()]))
+        Path(str(self.p) + '.1').write_bytes(encoded([row(action='would_block')]))
+        for index in range(128):
+            Path(str(self.p) + '.000-backup-%03d' % index).write_bytes(b'not a rotation\n')
+        self.r.refresh(NOW)
+        self.assertEqual(self.r.summary()['counts'], {'blocked': 1, 'would_block': 1})
+        self.assertEqual(len(self.r.files), 2)
+        self.assertNotIn('rotation limit reached: INCOMPLETE', self.r.warnings)
+
+    def test_valid_rotation_limit_stays_bounded_and_visible(self):
+        self.p.write_bytes(encoded([row()]))
+        for index in range(1, 129):
+            Path(str(self.p) + '.' + str(index)).write_bytes(encoded([row()]))
+        self.r.refresh(NOW)
+        self.assertEqual(len(self.r.files), 128)
+        self.assertEqual(self.r.summary()['counts']['blocked'], 128)
+        self.assertIn('rotation limit reached: INCOMPLETE', self.r.warnings)
+
     def test_rome_boundaries_and_midnight(self):
         self.p.write_bytes(encoded([row(stamp='2026-10-29T22:59:59+00:00'),row(stamp='2026-10-29T23:00:00+00:00'),row(stamp='2026-10-30T23:00:00+00:00')]))
         self.r.refresh(NOW)

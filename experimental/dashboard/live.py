@@ -15,6 +15,7 @@ import time
 import zlib
 from datetime import datetime, timezone
 from collections import Counter, defaultdict
+from heapq import nsmallest
 from timeframes import ROME, PRESETS, calendar_date, resolve_window
 from traffic import Traffic, source_spec
 from presentation import safe, savings_rows, panel_rows, dump_text, lines
@@ -103,10 +104,13 @@ class Reader:
         for source, base in enumerate(self.paths):
             if not base.exists():
                 self.warnings.append('MISSING active source ' + str(source + 1))
-            candidates = [base] + sorted(base.parent.glob(base.name + '.*'))
+            # Filter before the cap: backup/temporary lookalikes must not hide
+            # valid rotations or falsely report a rotation limit. Keep at most
+            # 128 matches (one overflow sentinel) without sorting the directory.
+            rotations = (path for path in base.parent.glob(base.name + '.*')
+                         if re.fullmatch(re.escape(base.name) + r'\.(?:\d+|\d{8})(?:\.gz)?', path.name))
+            candidates = [base] + nsmallest(128, rotations)
             for path in candidates[:128]:
-                if path != base and not re.fullmatch(re.escape(base.name) + r'\.(?:\d+|\d{8})(?:\.gz)?', path.name):
-                    continue
                 try:
                     st = path.stat()
                     if not stat.S_ISREG(st.st_mode):

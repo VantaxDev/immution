@@ -2,6 +2,8 @@
 
 ## Unreleased — completion candidate 2026-11-10
 
+- Filter gate CSV rotation names before applying the file cap, so unrelated
+  backup/temporary files cannot hide valid event logs or imply a false limit.
 - Integrate the traffic-first terminal dashboard and explicit synthetic demo.
 - Restyle terminal views with common-scale ASCII category/block bars, aligned
   values, responsive layouts and --demo labelled DATI SINTETICI.
