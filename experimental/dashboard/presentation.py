@@ -1,6 +1,6 @@
 """Bounded terminal overview and deterministic, privacy-preserving text dumps."""
 from collections import Counter
-from datetime import timezone
+from datetime import timedelta, timezone
 from decimal import Decimal, localcontext
 from heapq import nsmallest
 
@@ -60,7 +60,7 @@ def dump_text(reader, site='all', status='unknown', top_n=5, baseline=None, bloc
     s = reader.summary(site)
     c, u = s['counts'], s['unique']
     ranked, other, other_hosts = top_hosts(s, top_n, site)
-    rows = ['IMMUTION | LIVE LOGS | READ ONLY',
+    rows = [('IMMUTION | DEMO / SYNTHETIC | READ ONLY' if getattr(reader, 'demo', False) else 'IMMUTION | LIVE LOGS | READ ONLY'),
             'Generated: ' + reader.cutoff.astimezone(timezone.utc).isoformat(),
             'Timeframe: ' + reader.window.name + ' | timezone: Europe/Rome',
             'Range [start, end): [%s, %s)' % (reader.window.start.isoformat(), reader.window.end.isoformat()),
@@ -101,12 +101,126 @@ def lines(reader, site, status, help_visible=False):
     return dump_text(reader, site, status).splitlines()
 
 
+def traffic_panel_rows(reader, site, width, height, help_visible=False):
+    """Traffic-first viewport using the existing conservative session heuristic.
+
+    Unobserved dates/sources are N/D, never interpolated as zero. No enforcement
+    ratios: selected-vhost traffic and claimed-Host gate events differ in scope.
+    """
+    rows = []
+    def add(text, style='normal'):
+        text = safe(text)
+        rows.append((text if len(text) <= width else text[:max(0, width - 1)] + '~', style))
+    footer = 'q quit v blocchi n/p sito 0 tutti 1/2/3/4 periodo ? aiuto r refresh'
+    if width < 58:
+        footer = 'q quit v vista n/p sito t periodo'
+    marker = 'DEMO | ' if getattr(reader, 'demo', False) else ''
+    add('IMMUTION / TRAFFICO | ' + marker + reader.window.name, 'title')
+    add('[%s, %s) Europe/Rome' % (reader.window.start.date(), reader.window.end.date()), 'dim')
+    if height >= 18 and width >= 58:
+        add('Snapshot ' + reader.cutoff.astimezone(reader.window.start.tzinfo).isoformat(timespec='seconds'), 'dim')
+    add('Sito: ' + ('tutti i log mappati' if site == 'all' else site), 'section')
+    traffic = reader.traffic
+    overview = traffic.overview(site)
+    c, requests = overview['counts'], overview['requests']
+    if height < 10:
+        rows.clear()
+        add('IMMUTION / TRAFFICO' + (' / DEMO' if marker else ''), 'title')
+        add('BROWSER %s gruppi' % (c['browser_like'] if requests else 'N/D'), 'metric')
+        add('Non persone; UA falsificabili', 'dim')
+        add('Amb %s | Bot UA %s' % (c['ambiguous'], c['declared_bot']))
+        add('HTTP %s' % (requests if requests else 'N/D'))
+        add('UNKNOWN%s' % (' / INCOMPLETE' if overview['issues'] else ''), 'section')
+        return rows[:max(0, height - 1)] + [(safe(footer)[:width], 'section')]
+    if not overview['sites']:
+        add('VISITE / STIMA BROWSER: N/D', 'metric')
+        add('Access log non configurato per la selezione.')
+        add('Usa --access-log SITO=FILE (Combined per vhost).')
+        add('Gli eventi del gate non misurano le visite.', 'dim')
+    elif not requests:
+        add('VISITE / STIMA BROWSER: N/D', 'metric')
+        add('Nessun record utilizzabile prima del cutoff.')
+        add('Non significa zero visite o zero persone.', 'dim')
+    else:
+        add('VISITE / STIMA BROWSER %s osservate' % c['browser_like'], 'metric')
+        add('Non persone; non umani verificati. UA falsificabili.', 'dim')
+        if width >= 58:
+            add('Ambigue %s | Bot/tool UA %s | Scanner %s | Interne %s' %
+                (c['ambiguous'], c['declared_bot'], c['scanner'], c['internal']))
+        else:
+            add('Ambigue %s | Bot/tool UA %s' % (c['ambiguous'], c['declared_bot']))
+            if height >= 14:
+                add('Scanner %s | Interne %s' % (c['scanner'], c['internal']))
+        add('Richieste HTTP %s | gruppi != richieste' % requests, 'metric')
+        age = max(0, int((reader.cutoff - overview['last']).total_seconds()) // 60)
+        add('Ultimo record %s (%sm fa)' %
+            (overview['last'].astimezone(reader.window.start.tzinfo).strftime('%d/%m %H:%M %z'), age), 'dim')
+        if height >= 18:
+            add('Record %s; non prova salute o continuita.' % ('non recente (>15m)' if age > 15 else 'recente (<=15m)'), 'dim')
+    add('Copertura UNKNOWN%s | problemi %s' %
+        (' / INCOMPLETE' if overview['issues'] else '', overview['issues']), 'section')
+    if help_visible:
+        add('HELP / READ ONLY', 'section')
+        for text in ('v: traffico / blocchi; n/p o Tab: sito; 0: tutti',
+                     '1 oggi; 2 ieri; 3 ultimi7; 4 settimana precedente; t ciclo',
+                     '2 pagine GET200 >=10s + referrer stesso sito; gap >30min',
+                     'IP+UA/giorno: NAT unisce, cambio IP/UA divide; no persone',
+                     'Bot/tool: UA dichiarato, non crawler verificato via DNS',
+                     'N/D: nessuna osservazione; non uno zero misurato',
+                     'Barre: gruppi browser osservati, non probabilita umana',
+                     '--once / --export FILE: tutti i giorni/siti e problemi'):
+            add(text)
+    elif height >= 18 and width >= 58:
+        # Reserve two gate/caveat lines and controls; fit days and sites together.
+        room = max(0, height - len(rows) - 3)
+        if room >= 3:
+            span = (reader.window.end.date() - reader.window.start.date()).days
+            days = min(span, 7, max(1, room - 7))
+            add('GIORNO       BROWSER  AMBIGUI BOT/UA    HTTP | andamento browser', 'section')
+            last_day = reader.window.end.date() - timedelta(days=1)
+            days_to_show = [last_day - timedelta(days=i) for i in reversed(range(days))]
+            maximum = max((overview['daily'].get(day, {}).get('counts', {}).get('browser_like', 0)
+                           for day in days_to_show), default=0)
+            for day in days_to_show:
+                entry = overview['daily'].get(day)
+                if entry:
+                    count = entry['counts']
+                    bar = '#' * max(1, round(count['browser_like'] / maximum * 10)) if count['browser_like'] and maximum else '-'
+                    add('%s %7s %8s %6s %7s | %s' % (day, count['browser_like'], count['ambiguous'], count['declared_bot'], entry['requests'], bar))
+                else:
+                    add('%s     N/D      N/D    N/D     N/D | nessun record' % day)
+            if span > days:
+                add('Ultimi %s/%s giorni selezionati; intero periodo: --once' % (days, span), 'dim')
+            remaining = height - len(rows) - 3
+            if remaining >= 2:
+                add('SITO MAPPATO (periodo)          BROWSER  BOT/UA AMBIGUI    HTTP', 'section')
+                sites = sorted(overview['sites'].items())
+                slots = remaining - 1
+                # Reserve one row to disclose hidden sites, even if none fit.
+                visible = slots if len(sites) <= slots else max(0, slots - 1)
+                for label, entry in sites[:visible]:
+                    count = entry['counts']
+                    values = [count['browser_like'], count['declared_bot'], count['ambiguous'], entry['requests']] if entry['requests'] else ['N/D'] * 4
+                    name = label if len(label) <= 28 else label[:27] + '~'
+                    add('%-28s %7s %7s %7s %7s' % (name, *values))
+                if len(sites) > visible:
+                    add('+ %s siti non mostrati: n/p seleziona; --once tutti' % (len(sites) - visible), 'dim')
+    if height >= 14:
+        gate = reader.summary(site)['counts']
+        add('Gate claimed Host: B %s | M %s (consentite); v dettaglio' % (gate['blocked'], gate['would_block']), 'dim')
+        add('Gate != log vhost: no percentuale blocchi/visite.', 'dim')
+    rows = rows[:max(0, height - 1)]
+    return rows + [(safe(footer)[:width], 'section')]
+
+
 def panel_rows(reader, site, status, width, help_visible=False, baseline=None,
-               block_bytes=None, height=24, top_n=5):
+               block_bytes=None, height=24, top_n=5, view='auto'):
     """One viewport, never a scrollable document. Hidden hosts go into OTHER."""
     width, height = max(1, width), max(0, height)
     if height == 0:
         return []
+    if view == 'traffic' or (view == 'auto' and getattr(reader, 'traffic', None) and reader.traffic.sources):
+        return traffic_panel_rows(reader, site, width, height, help_visible)
     s = reader.summary(site)
     c, u = s['counts'], s['unique']
     warnings = len(set(reader.warnings))
@@ -116,9 +230,9 @@ def panel_rows(reader, site, status, width, help_visible=False, baseline=None,
     def add(text, style='normal'):
         text = safe(text)
         rows.append((text if len(text) <= width else text[:max(0, width - 1)] + '~', style))
-    legend = 'q quit 1 today 2 yest 3 last7 4 prev-week t cycle ? help r refresh'
+    legend = 'q quit v traffico 1/2/3/4 periodo t cycle ? help r refresh'
     if height < 18 or width < 58:
-        add('IMMUTION | ' + reader.window.name + (' | ' + site if site != 'all' else ''), 'title')
+        add('IMMUTION | ' + ('DEMO | ' if getattr(reader, 'demo', False) else '') + reader.window.name + (' | ' + site if site != 'all' else ''), 'title')
         add(savings_rows(c['blocked'], 0, baseline, block_bytes)[0], 'metric')
         add('B %s | M %s (allowed)' % (c['blocked'], c['would_block']), 'metric')
         if getattr(reader, 'traffic', None) and height >= 10:
@@ -139,7 +253,7 @@ def panel_rows(reader, site, status, width, help_visible=False, baseline=None,
             add('Other B=%s M=%s' % (other['blocked'], other['would_block']))
         footer = 'q quit t range ? help'
     else:
-        add('IMMUTION / READ ONLY | ' + reader.window.name, 'title')
+        add('IMMUTION / READ ONLY | ' + ('DEMO | ' if getattr(reader, 'demo', False) else '') + reader.window.name, 'title')
         add('[%s, %s) Europe/Rome' % (reader.window.start.date(), reader.window.end.date()))
         add('As of %s | end exclusive' % reader.cutoff.astimezone(reader.window.start.tzinfo).isoformat(timespec='seconds'), 'dim')
         add('Scope: ' + site + ' [claimed Host; UNTRUSTED]')
@@ -157,7 +271,7 @@ def panel_rows(reader, site, status, width, help_visible=False, baseline=None,
             add('HELP / READ ONLY', 'section')
             for text in ('1 today; 2 yesterday; 3 last7 incl today; 4 previous calendar week',
                          't cycles ranges; CLI --start DATE --end DATE for custom [start,end)',
-                         'n/p or Tab: Host filter; 0: all; r: bounded refresh; q: quit',
+                         'v: traffic view; n/p or Tab: Host; 0: all; r refresh; q quit',
                          'No scrolling: hidden Hosts aggregated in Other; --top N sets limit',
                          '--once or --export FILE: full sanitized dump, exclusive file create'):
                 add(text)
