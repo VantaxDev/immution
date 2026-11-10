@@ -94,19 +94,27 @@ class Traffic:
         files, signature, issues = [], [], Counter()
         seen = set()
         for site, base in self.sources:
+            def order(path):
+                if path == base:
+                    return (0, 0, '')
+                return (1, int(path.name[len(base.name)+1:].split('.')[0]), path.name)
             paths = [base]
             try:
                 with os.scandir(base.parent) as entries:
                     for entry in entries:
                         if re.fullmatch(re.escape(base.name) + r'\.(?:[0-9]+)(?:\.gz)?', entry.name):
-                            paths.append(Path(entry.path))
+                            path = Path(entry.path)
+                            # Compression overlap must not consume a file slot.
+                            if path.suffix == '.gz' and Path(str(path)[:-3]).exists():
+                                continue
+                            paths.append(path)
+                            paths.sort(key=order)
                             if len(paths) > 32:
-                                issues[(site, 'file_limit')] += 1
-                                break
+                                issues[(site, 'file_limit')] = 1
+                                paths.pop()  # bounded memory; retain newest suffixes
             except OSError:
                 issues[(site, 'unreadable_directory')] += 1
-            paths = [p for p in paths if p.suffix != '.gz' or not Path(str(p)[:-3]).exists()]
-            for path in sorted(paths, key=lambda p: (p != base, p.name))[:32]:
+            for path in paths:
                 try:
                     st = path.stat()
                     if not stat.S_ISREG(st.st_mode):
@@ -270,17 +278,22 @@ class Traffic:
         counts = Counter()
         for entry in sites.values():
             counts.update(entry['counts'])
+        issue_counts = Counter()
+        for (label, name), value in self.issues.items():
+            if label in labels:
+                issue_counts[name] += value
         return dict(counts=counts, requests=sum(v['requests'] for v in sites.values()),
                     daily=daily, sites=sites,
                     last=max((v['last'] for v in sites.values() if v['last']), default=None),
-                    issues=sum(v for (label, _), v in self.issues.items() if label in labels))
+                    issue_counts=issue_counts, issues=sum(issue_counts.values()))
 
     def report(self, site='all'):
         rows = ['VISITE / STIMA SESSIONI BROWSER (non persone; non umani verificati)',
                 'Metric: IP+UA inactivity >30min, reset at local midnight; 2 page GET200 >=10s apart + same-site referrer.',
                 'Recognized tools/probes excluded; browser spoofing still possible. Never total minus bots.',
                 'NAT may merge visitors; IP/UA changes may split one visitor. No unique-person estimate.',
-                'Traffic coverage UNKNOWN always; bounded prefix scan, not continuous history. Counts are observed only.']
+                'Traffic coverage UNKNOWN always; bounded prefix scan, not continuous history. Counts are observed only.',
+                'Read cap: 8 MiB decompressed across sources per changed snapshot; recent records may be outside the prefix.']
         if not self.sources:
             return rows + ['STIMA BROWSER: N/D | no selected-vhost access log configured (gate events cannot count visits).']
         overview = self.overview(site)

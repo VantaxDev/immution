@@ -157,8 +157,15 @@ def traffic_panel_rows(reader, site, width, height, help_visible=False):
             (overview['last'].astimezone(reader.window.start.tzinfo).strftime('%d/%m %H:%M %z'), age), 'dim')
         if height >= 18:
             add('Record %s; non prova salute o continuita.' % ('non recente (>15m)' if age > 15 else 'recente (<=15m)'), 'dim')
-    add('Copertura UNKNOWN%s | problemi %s' %
-        (' / INCOMPLETE' if overview['issues'] else '', overview['issues']), 'section')
+    issue_counts = overview['issue_counts']
+    if issue_counts.get('read_budget'):
+        add('Copertura UNKNOWN / INCOMPLETE | 8 MiB prefisso; recenti poss. esclusi', 'section')
+    else:
+        # Names are fixed parser/discovery codes, never source paths or log text.
+        detail = ','.join(sorted(issue_counts))
+        add('Copertura UNKNOWN%s | problemi %s%s' %
+            (' / INCOMPLETE' if overview['issues'] else '', overview['issues'],
+             ': ' + detail if detail else ''), 'section')
     if help_visible:
         add('HELP / READ ONLY', 'section')
         for text in ('v: traffico / blocchi; n/p o Tab: sito; 0: tutti',

@@ -183,6 +183,26 @@ class TrafficTests(unittest.TestCase):
         self.assertIn('source_shrank=1', report)
         self.assertIn('STIMA BROWSER: N/D', report)
 
+    def test_rotation_budget_prefers_recent_numeric_order(self):
+        self.path.write_text('')
+        recent = row(ip='192.0.2.2')
+        Path(str(self.path)+'.2').write_text(recent)
+        Path(str(self.path)+'.10').write_text(row(ip='192.0.2.10', ua='curl/8'))
+        with patch.object(traffic, 'BUDGET', len(recent.encode())):
+            self.refresh()
+        self.assertEqual(self.totals()['ambiguous'], 1)
+        self.assertEqual(self.totals()['declared_bot'], 0)
+        self.assertIn('read_budget', '\n'.join(self.reader.report()))
+
+    def test_file_cap_selects_recent_rotations_not_directory_iteration_order(self):
+        self.path.write_text('')
+        for number in reversed(range(1, 41)):
+            Path(str(self.path)+'.'+str(number)).write_text('')
+        files, _, issues = self.reader.discover()
+        self.assertEqual([p.name for _, p in files],
+                         [self.path.name] + [self.path.name+'.'+str(n) for n in range(1, 32)])
+        self.assertTrue(issues[(SITE, 'file_limit')])
+
     def test_rotations_gzip_corruption_duplicate_and_unreadable(self):
         self.path.write_text(visit())
         with gzip.open(str(self.path)+'.1.gz', 'wb') as handle:

@@ -70,6 +70,17 @@ class InsightsTests(unittest.TestCase):
         self.assertIn('--access-log SITO=FILE', unmapped)
         self.assertIn('gate non misurano le visite', unmapped)
 
+    def test_partial_coverage_view_explains_budget_and_scopes_issue_names(self):
+        # Synthetic issue evidence: no private file paths or raw records in UI.
+        self.r.traffic.issues[(SITE, 'read_budget')] = 1
+        text = self.panel(SITE)
+        self.assertIn('8 MiB', text)
+        self.assertIn('prefisso', text)
+        self.assertIn('recenti', text)
+        self.assertNotIn('missing_or_unreadable', text)
+        del self.r.traffic.issues[(SITE, 'read_budget')]
+        self.assertIn('missing_or_unreadable', self.panel('missing.invalid'))
+
     def test_daily_gaps_nd_observed_zero_and_recent_record(self):
         # Yesterday contains only declared bot activity: browser zero observed,
         # unlike the dates without any usable records which must remain N/D.

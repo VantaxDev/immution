@@ -1,5 +1,16 @@
 # Changelog
 
+## Unreleased — completion candidate 2026-11-10
+
+- Integrate the traffic-first terminal dashboard and explicit synthetic demo.
+- Reject negative bandwidth byte assumptions; handle CSV parser failures without
+  traceback and redact malformed URI authorities in monitor reports.
+- Read dashboard rotations in numeric suffix order and retain the lowest
+  suffixes under the existing file cap, regardless of directory iteration order.
+- Explain partial traffic coverage and the unchanged 8 MiB prefix limit in the
+  viewport; never infer zero people or complete coverage from observed counts.
+- See docs/COMPLETION_20261110.md for the finite delivery and remaining gates.
+
 ## Unreleased — source review 2026-09-15
 
 - Coordinate scoring, cleanup and unblock; prevent 403 score feedback.
