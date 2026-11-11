@@ -36,6 +36,14 @@ and rows hidden by height/top limit. Top + Other equals complete selected-scope
 totals. IP unique counts overlap and must not be summed. A ~ marks a shortened
 label, never a verified site identity or proof of a protected site.
 
+Gate CSV unique-IP counts normalize IPv4-mapped IPv6 to its IPv4 address
+before per-run salted hashing. Mixed spellings of that address across sources,
+rotations or claimed Hosts count once within the selected scope and action;
+blocked and monitor actions still have separate, overlapping unique counts.
+Native IPv6, IPv4-compatible IPv6 and NAT64 addresses are not folded into IPv4.
+All event totals remain unchanged; unique IPs are not counts of people or bots.
+No raw address is retained in the cached events or exported.
+
 - 1: today; 2: yesterday; 3: last7; 4: previous calendar week.
 - t: cycle presets (from a custom range, return to today).
 - Tab / n / p / left / right: claimed Host filter; 0: all Hosts.

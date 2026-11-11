@@ -203,8 +203,13 @@ class Reader:
             if r['action'] not in ('blocked', 'would_block'):
                 self.issues['unknown_action'] += 1
                 return
-            ip = str(ipaddress.ip_address(r['ip']))
-            token = hashlib.blake2b(ip.encode(), key=self.salt, digest_size=16).digest()
+            ip = ipaddress.ip_address(r['ip'])
+            # IPv4-mapped IPv6 is an alias of the IPv4 endpoint. Normalize
+            # before hashing so mixed log spellings do not inflate uniques.
+            # Native, compatible and NAT64 IPv6 remain distinct addresses.
+            if isinstance(ip, ipaddress.IPv6Address) and ip.ipv4_mapped is not None:
+                ip = ip.ipv4_mapped
+            token = hashlib.blake2b(str(ip).encode(), key=self.salt, digest_size=16).digest()
             test = (r['host'].lower() == 'immution-selftest.invalid' and
                     r['request_uri'] == '/immution-block-activation-selftest' and
                     r['user_agent'] == 'Immution activation self-test')

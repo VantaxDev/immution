@@ -2,6 +2,8 @@
 
 ## Unreleased — completion candidate 2026-11-10
 
+- Normalize IPv4-mapped IPv6 aliases before hashing gate CSV addresses, so
+  mixed spellings do not inflate unique-IP counts; event totals are unchanged.
 - Filter gate CSV rotation names before applying the file cap, so unrelated
   backup/temporary files cannot hide valid event logs or imply a false limit.
 - Integrate the traffic-first terminal dashboard and explicit synthetic demo.

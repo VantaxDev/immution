@@ -105,6 +105,39 @@ finally:
             self.assertNotIn(secret,text)
         self.assertEqual(self.r.summary('example.invalid')['counts']['blocked'],1)
 
+    def test_mapped_ipv4_gate_uniques_across_rotations_hosts_and_actions(self):
+        self.p.write_bytes(encoded([row(), row(ip='::ffff:192.0.2.1')]))
+        Path(str(self.p) + '.1').write_bytes(encoded([
+            row(ip='::ffff:c000:201', host='other.invalid'),
+            row(ip='::ffff:c000:201', action='would_block'),
+            row(action='would_block')]))
+        self.r.refresh(NOW)
+        summary = self.r.summary()
+        self.assertEqual(summary['counts'], {'blocked': 3, 'would_block': 2})
+        self.assertEqual(summary['unique'], {'blocked': 1, 'would_block': 1})
+        self.assertEqual(self.r.summary('example.invalid')['unique'],
+                         {'blocked': 1, 'would_block': 1})
+        self.assertEqual(self.r.summary('other.invalid')['unique'], {'blocked': 1})
+        self.assertEqual(summary['sources'][1], {'blocked': 3, 'would_block': 2})
+        with self.p.open('ab') as handle:
+            handle.write(encoded([row(ip='::ffff:c000:201')], header=False))
+        self.r.refresh(NOW)
+        self.assertEqual(self.r.summary()['counts']['blocked'], 4)
+        self.assertEqual(self.r.summary()['unique']['blocked'], 1)
+        before = self.r.bytes_read
+        self.r.refresh(NOW)
+        self.assertEqual(self.r.bytes_read, before)
+        for address in ('192.0.2.1', '::ffff:192.0.2.1', '::ffff:c000:201'):
+            self.assertNotIn(address, repr(self.r.events))
+
+    def test_gate_uniques_do_not_fold_native_compatible_or_nat64_ipv6(self):
+        addresses = ('192.0.2.1', '192.0.2.2', '2001:db8::c000:201',
+                     '::c000:201', '64:ff9b::c000:201')
+        self.p.write_bytes(encoded([row(ip=address) for address in addresses]))
+        self.r.refresh(NOW)
+        self.assertEqual(self.r.summary()['counts'], {'blocked': len(addresses)})
+        self.assertEqual(self.r.summary()['unique'], {'blocked': len(addresses)})
+
     def test_partial_append_and_malformed(self):
         self.p.write_bytes(encoded([row()])[:-1])
         self.r.refresh(NOW)
