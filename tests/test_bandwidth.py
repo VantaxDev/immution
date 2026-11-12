@@ -11,6 +11,44 @@ TOOL = Path(__file__).resolve().parents[1] / 'tools' / 'immution_bandwidth.py'
 
 
 class BandwidthTests(unittest.TestCase):
+    def test_corrupt_events_csv_fails_without_traceback_or_partial_estimate(self):
+        damaged_rows = ('"' + 'x' * (csv.field_size_limit() + 1) + '",blocked\n',
+                        '"/private-sentinel,blocked\n')
+        for damaged in damaged_rows:
+            with self.subTest(kind='oversize' if len(damaged) > 100 else 'unclosed'), \
+                    tempfile.TemporaryDirectory() as directory:
+                events = Path(directory) / 'private-events.csv'
+                access = Path(directory) / 'access.log'
+                events.write_text('request_uri,action\n/valid,blocked\n' + damaged)
+                access.write_text('')
+                before = events.read_bytes()
+                result = subprocess.run(
+                    [sys.executable, str(TOOL), '--events', str(events),
+                     '--access', str(access)], stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE, universal_newlines=True)
+                self.assertEqual(result.returncode, 1, result.stderr)
+                self.assertEqual(result.stdout, '')
+                self.assertIn('cannot parse events CSV', result.stderr)
+                for private in ('Traceback', str(events), 'private-sentinel'):
+                    self.assertNotIn(private, result.stderr)
+                self.assertEqual(events.read_bytes(), before)
+
+    def test_valid_quoted_csv_fields_remain_supported(self):
+        with tempfile.TemporaryDirectory() as directory:
+            events = Path(directory) / 'events.csv'
+            access = Path(directory) / 'access.log'
+            with events.open('w', newline='') as handle:
+                writer = csv.writer(handle)
+                writer.writerow(['request_uri', 'action', 'user_agent'])
+                writer.writerow(['/sample,quoted', 'blocked', 'synthetic "quoted"\nagent'])
+            access.write_text('')
+            result = subprocess.run(
+                [sys.executable, str(TOOL), '--events', str(events),
+                 '--access', str(access)], stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE, universal_newlines=True)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertIn('events (blocked): 1', result.stdout)
+
     def test_negative_byte_assumptions_are_rejected_before_reading_inputs(self):
         for option in ('--block-bytes', '--fallback-bytes'):
             with self.subTest(option=option), tempfile.TemporaryDirectory() as directory:

@@ -2,6 +2,8 @@
 
 ## Unreleased — completion candidate 2026-11-10
 
+- Reject malformed/truncated CSV quoting in the standalone bandwidth estimator;
+  parser errors exit cleanly without a traceback or partial estimate.
 - Normalize IPv4-mapped IPv6 aliases before hashing gate CSV addresses, so
   mixed spellings do not inflate unique-IP counts; event totals are unchanged.
 - Filter gate CSV rotation names before applying the file cap, so unrelated
