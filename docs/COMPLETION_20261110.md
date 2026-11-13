@@ -1,5 +1,9 @@
 # Immution completion candidate — 2026-11-10
 
+Follow-up: [nightly integration inventory](NIGHTLY_INTEGRATION_20261113.md)
+tracks the three later fixes and their review/deployment boundaries. The
+original scope and verification counts below remain dated evidence.
+
 ## Inventory and finite delivery
 
 Inventory at start: main `e0a64c225fffada55376c15993ad111d25cf0a80`, no open
