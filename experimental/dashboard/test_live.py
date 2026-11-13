@@ -105,6 +105,39 @@ finally:
             self.assertNotIn(secret,text)
         self.assertEqual(self.r.summary('example.invalid')['counts']['blocked'],1)
 
+    def test_mapped_ipv4_gate_uniques_across_rotations_hosts_and_actions(self):
+        self.p.write_bytes(encoded([row(), row(ip='::ffff:192.0.2.1')]))
+        Path(str(self.p) + '.1').write_bytes(encoded([
+            row(ip='::ffff:c000:201', host='other.invalid'),
+            row(ip='::ffff:c000:201', action='would_block'),
+            row(action='would_block')]))
+        self.r.refresh(NOW)
+        summary = self.r.summary()
+        self.assertEqual(summary['counts'], {'blocked': 3, 'would_block': 2})
+        self.assertEqual(summary['unique'], {'blocked': 1, 'would_block': 1})
+        self.assertEqual(self.r.summary('example.invalid')['unique'],
+                         {'blocked': 1, 'would_block': 1})
+        self.assertEqual(self.r.summary('other.invalid')['unique'], {'blocked': 1})
+        self.assertEqual(summary['sources'][1], {'blocked': 3, 'would_block': 2})
+        with self.p.open('ab') as handle:
+            handle.write(encoded([row(ip='::ffff:c000:201')], header=False))
+        self.r.refresh(NOW)
+        self.assertEqual(self.r.summary()['counts']['blocked'], 4)
+        self.assertEqual(self.r.summary()['unique']['blocked'], 1)
+        before = self.r.bytes_read
+        self.r.refresh(NOW)
+        self.assertEqual(self.r.bytes_read, before)
+        for address in ('192.0.2.1', '::ffff:192.0.2.1', '::ffff:c000:201'):
+            self.assertNotIn(address, repr(self.r.events))
+
+    def test_gate_uniques_do_not_fold_native_compatible_or_nat64_ipv6(self):
+        addresses = ('192.0.2.1', '192.0.2.2', '2001:db8::c000:201',
+                     '::c000:201', '64:ff9b::c000:201')
+        self.p.write_bytes(encoded([row(ip=address) for address in addresses]))
+        self.r.refresh(NOW)
+        self.assertEqual(self.r.summary()['counts'], {'blocked': len(addresses)})
+        self.assertEqual(self.r.summary()['unique'], {'blocked': len(addresses)})
+
     def test_partial_append_and_malformed(self):
         self.p.write_bytes(encoded([row()])[:-1])
         self.r.refresh(NOW)
@@ -128,6 +161,25 @@ finally:
         with gzip.open(str(self.p)+'.2.gz','wb') as f: f.write(encoded([row()]))
         other.refresh(NOW)
         self.assertEqual(len(other.events),3)
+
+    def test_unrelated_rotation_lookalikes_do_not_hide_valid_logs(self):
+        self.p.write_bytes(encoded([row()]))
+        Path(str(self.p) + '.1').write_bytes(encoded([row(action='would_block')]))
+        for index in range(128):
+            Path(str(self.p) + '.000-backup-%03d' % index).write_bytes(b'not a rotation\n')
+        self.r.refresh(NOW)
+        self.assertEqual(self.r.summary()['counts'], {'blocked': 1, 'would_block': 1})
+        self.assertEqual(len(self.r.files), 2)
+        self.assertNotIn('rotation limit reached: INCOMPLETE', self.r.warnings)
+
+    def test_valid_rotation_limit_stays_bounded_and_visible(self):
+        self.p.write_bytes(encoded([row()]))
+        for index in range(1, 129):
+            Path(str(self.p) + '.' + str(index)).write_bytes(encoded([row()]))
+        self.r.refresh(NOW)
+        self.assertEqual(len(self.r.files), 128)
+        self.assertEqual(self.r.summary()['counts']['blocked'], 128)
+        self.assertIn('rotation limit reached: INCOMPLETE', self.r.warnings)
 
     def test_rome_boundaries_and_midnight(self):
         self.p.write_bytes(encoded([row(stamp='2026-10-29T22:59:59+00:00'),row(stamp='2026-10-29T23:00:00+00:00'),row(stamp='2026-10-30T23:00:00+00:00')]))

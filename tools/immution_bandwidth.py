@@ -80,16 +80,21 @@ def main():
 
     count = 0
     estimated_allowed = 0
-    with open(args.events, "r", encoding="utf-8", errors="replace", newline="") as handle:
-        for row in csv.DictReader(handle):
-            action = row.get("action")
-            if action not in ("blocked", "would_block"):
-                continue
-            if args.action != "all" and action != args.action:
-                continue
-            path = row.get("request_uri", "/")
-            estimated_allowed += medians.get(path, args.fallback_bytes)
-            count += 1
+    try:
+        with open(args.events, "r", encoding="utf-8", errors="replace", newline="") as handle:
+            for row in csv.DictReader(handle, strict=True):
+                action = row.get("action")
+                if action not in ("blocked", "would_block"):
+                    continue
+                if args.action != "all" and action != args.action:
+                    continue
+                path = row.get("request_uri", "/")
+                estimated_allowed += medians.get(path, args.fallback_bytes)
+                count += 1
+    except csv.Error:
+        # Do not turn malformed/truncated CSV into a plausible partial estimate,
+        # or disclose input paths/records in a traceback or parser diagnostic.
+        raise SystemExit("cannot parse events CSV; bandwidth estimate not produced")
 
     served = count * args.block_bytes
     difference = estimated_allowed - served
