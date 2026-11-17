@@ -46,3 +46,26 @@ Strict CSV syntax does not authenticate records or validate every schema field.
 No main merge, force push, tag, production access, service/config/scheduler
 change or rollout is part of this delivery. Review the incremental diff against
 PR15, not only the cumulative diff against main.
+
+## Follow-up priority update — 2026-11-17
+
+1. Completed in a separate stacked candidate: reject duplicate CSV headers and
+   records whose cell count differs from the header in the standalone bandwidth
+   estimator. Previously these could silently drop events or use a shifted URI.
+   Error output remains generic, nonzero and without a partial estimate. Valid
+   quoted/multiline CSV and legacy missing-action handling remain unchanged.
+   Three synthetic malformed structures failed before and pass after; all ten
+   bandwidth tests pass. Source release checks pass (61 core/CLI tests).
+2. Review PR14 -> PR15 -> PR16 and this follow-up; reconcile exact-head CI after
+   any base change. No merge, deployment or operational evidence is implied.
+3. Stabilize test_existing_scoring_identical_with_monitor_enabled: one local
+   release run crossed a wall-clock second between engines and differed only in
+   reason timestamps; an unchanged retry passed. This is a test-clock issue,
+   not evidence of a scoring or bandwidth regression.
+4. Existing monitor/proxy/privacy/release evidence gates remain open. Daily
+   visits remain estimated browser-like visits, never exact human counts.
+
+No dependencies, scoring, runtime permissions, enforcement, license or data
+visibility changes. The estimator only reads synthetic/local inputs; this
+verification used no production logs. Hosted checks must pass on the exact new
+head; historical green runs are not substituted.

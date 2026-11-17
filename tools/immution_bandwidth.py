@@ -82,7 +82,15 @@ def main():
     estimated_allowed = 0
     try:
         with open(args.events, "r", encoding="utf-8", errors="replace", newline="") as handle:
-            for row in csv.DictReader(handle, strict=True):
+            reader = csv.DictReader(handle, strict=True)
+            fields = reader.fieldnames or []
+            if len(fields) != len(set(fields)):
+                raise csv.Error("duplicate columns")
+            for row in reader:
+                # DictReader otherwise silently overwrites duplicate headers,
+                # discards surplus cells, or pads truncated records with None.
+                if None in row or any(value is None for value in row.values()):
+                    raise csv.Error("record width differs from header")
                 action = row.get("action")
                 if action not in ("blocked", "would_block"):
                     continue
