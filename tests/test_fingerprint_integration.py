@@ -1,5 +1,6 @@
 """Synthetic integration and boundary tests; no HTTP or production data."""
 import contextlib
+from datetime import datetime
 import io
 import json
 import os
@@ -94,7 +95,12 @@ class FingerprintIntegrationTests(unittest.TestCase):
         self.addCleanup(other_temp.cleanup)
         other = Immution(runtime_dir=other_temp.name)
         records = [line(i) for i in range(12)] + [line(i, target='/absent', status=404) for i in range(10)]
-        with mock.patch('immution.time.time', return_value=1000), contextlib.redirect_stdout(io.StringIO()):
+        with mock.patch('immution.time.time', return_value=1000), \
+                mock.patch('immution.datetime', wraps=datetime) as clock, \
+                contextlib.redirect_stdout(io.StringIO()):
+            # Reasons use datetime.now(), independently of score/expiry time.time().
+            # Freeze both clocks; retain the full persisted-state comparison.
+            clock.now.return_value = datetime(2026, 11, 17, 12, 0, 0)
             for record in records:
                 self.engine.analyze_line(record, log_source=self.source)
                 other.analyze_line(record, log_source=self.source)
