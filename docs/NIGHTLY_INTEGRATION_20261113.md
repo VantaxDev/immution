@@ -58,7 +58,11 @@ PR15, not only the cumulative diff against main.
    bandwidth tests pass. Source release checks pass (61 core/CLI tests).
 2. Review PR14 -> PR15 -> PR16 and this follow-up; reconcile exact-head CI after
    any base change. No merge, deployment or operational evidence is implied.
-3. Stabilize test_existing_scoring_identical_with_monitor_enabled: one local
+3. Completed in stacked test-clock candidate: freeze datetime.now() as well as
+   time.time() in test_existing_scoring_identical_with_monitor_enabled, retaining
+   full JSON equality (including reason timestamps). Deterministic advancing-clock
+   reproduction fails before the fix; focused integration suite passes afterward.
+   Original observation: one local
    release run crossed a wall-clock second between engines and differed only in
    reason timestamps; an unchanged retry passed. This is a test-clock issue,
    not evidence of a scoring or bandwidth regression.
