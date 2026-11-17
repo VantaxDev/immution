@@ -33,6 +33,29 @@ class BandwidthTests(unittest.TestCase):
                     self.assertNotIn(private, result.stderr)
                 self.assertEqual(events.read_bytes(), before)
 
+    def test_ambiguous_csv_structure_rejects_partial_estimates(self):
+        cases = (
+            'request_uri,action,action\n/private-sentinel,blocked,allowed\n',
+            'request_uri,action\n/valid,blocked\n/private-sentinel,blocked,extra\n',
+            'request_uri,action\n/valid,blocked\n/private-sentinel\n',
+        )
+        for content in cases:
+            with self.subTest(content=content), tempfile.TemporaryDirectory() as directory:
+                events = Path(directory) / 'events.csv'
+                access = Path(directory) / 'access.log'
+                events.write_text(content)
+                access.write_text('')
+                result = subprocess.run(
+                    [sys.executable, str(TOOL), '--events', str(events),
+                     '--access', str(access)], stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE, universal_newlines=True)
+                self.assertEqual(result.returncode, 1, result.stderr)
+                self.assertEqual(result.stdout, '')
+                self.assertIn('cannot parse events CSV', result.stderr)
+                for private in ('Traceback', str(events), 'private-sentinel'):
+                    self.assertNotIn(private, result.stderr)
+                self.assertEqual(events.read_text(), content)
+
     def test_valid_quoted_csv_fields_remain_supported(self):
         with tempfile.TemporaryDirectory() as directory:
             events = Path(directory) / 'events.csv'
