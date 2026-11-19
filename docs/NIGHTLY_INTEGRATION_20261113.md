@@ -73,3 +73,16 @@ No dependencies, scoring, runtime permissions, enforcement, license or data
 visibility changes. The estimator only reads synthetic/local inputs; this
 verification used no production logs. Hosted checks must pass on the exact new
 head; historical green runs are not substituted.
+
+## Follow-up priority update — 2026-11-19
+
+1. New stacked candidate on PR18 corrects `--action all` bandwidth output:
+   the combined total includes monitor-mode hypothetical savings, not solely
+   prevented traffic. Show blocked/would_block counts separately and label the
+   total combined actual/potential; default and monitor-only modes unchanged.
+   Synthetic mixed and monitor-only regressions fail before/pass after.
+2. Review PR14–18 and this candidate, reconcile bases/checks after downstack
+   changes. No merge or deployment authority is implied.
+3. Operational monitor/proxy/privacy/release evidence remains outstanding;
+   synthetic tests cannot satisfy those gates. No Nov19 scheduled receipt was
+   present when this slice began; Nov18 verified PR18's 16 successful checks.

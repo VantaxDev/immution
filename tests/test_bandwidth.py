@@ -155,6 +155,16 @@ class BandwidthTests(unittest.TestCase):
         report = self.run_estimate(['blocked', 'would_block', 'allowed', ''], 'all')
         self.assertIn('events (all): 2', report)
         self.assertIn('estimated original responses: 2.00 MiB', report)
+        self.assertIn('combined actual/potential avoided: 2.00 MiB', report)
+        self.assertIn('blocked: 1; would_block: 1', report)
+        self.assertIn('Monitor events did not prevent responses', report)
+        self.assertNotIn('estimated avoided:', report)
+
+    def test_all_monitor_only_does_not_claim_actual_savings(self):
+        report = self.run_estimate(['would_block', 'would_block'], 'all')
+        self.assertIn('blocked: 0; would_block: 2', report)
+        self.assertIn('combined actual/potential avoided: 2.00 MiB', report)
+        self.assertNotIn('estimated avoided:', report)
 
 
 if __name__ == '__main__':
