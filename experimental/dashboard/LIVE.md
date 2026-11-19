@@ -279,3 +279,11 @@ space. HTTP totals are not on the groups scale. Gate/top-Host bars scale B only;
 M is allowed monitor traffic. Other preserves hidden counts. Missing input is
 N/D without a bar; UNKNOWN/INCOMPLETE never disappear. Defaults inherit the SSH
 terminal theme. See [ASCII verification and actual output](../../docs/ASCII_DASHBOARD_20261110.md).
+
+### Transient traffic-source read errors
+
+A changed source is scanned under existing budgets. If reading fails, the
+snapshot reports INCOMPLETE; subsequent caller refreshes may retry after at
+least 30 monotonic seconds even if source metadata are unchanged. Successful
+snapshots remain cached. There is no background retry or sleep, and a retry
+rebuilds the bounded snapshot rather than adding duplicate observations.

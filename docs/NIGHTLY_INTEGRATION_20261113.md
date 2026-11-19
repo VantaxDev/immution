@@ -100,3 +100,18 @@ head; historical green runs are not substituted.
 3. Operational release gates still require independent authorized evidence.
    ctime invalidation is not continuous monitoring: ACL/parent access changes
    that do not alter discovered file metadata are not guaranteed detected.
+
+## Slice 3 priority update — 2026-11-19
+
+1. New candidate on PR20: transient traffic read_error no longer pins a failed
+   snapshot forever when file metadata stay unchanged. On caller refresh,
+   retry failed snapshots at most once per 30 monotonic seconds. No sleep,
+   worker or loop added; successful snapshots stay cached. Each retry rebuilds
+   observations under the same byte/event/file limits (never appends duplicates).
+   Synthetic one-shot PermissionError reproduces failure before fix and recovery
+   after fix without stat changes; rapid refreshes do not reopen the source.
+2. Review exact-head CI and PR14–20 dependency chain plus this candidate.
+3. Persistent failures remain INCOMPLETE and are retried at the same bounded
+   cadence. Entire snapshot is retried, so a failed source can cause healthy
+   sources to be reread; scan budgets still apply. No continuous coverage claim
+   or operational release gate completion is implied.
