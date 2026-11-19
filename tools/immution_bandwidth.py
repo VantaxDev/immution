@@ -79,6 +79,7 @@ def main():
         raise SystemExit(f"events file not found: {args.events}")
 
     count = 0
+    action_counts = defaultdict(int)
     estimated_allowed = 0
     try:
         with open(args.events, "r", encoding="utf-8", errors="replace", newline="") as handle:
@@ -99,6 +100,7 @@ def main():
                 path = row.get("request_uri", "/")
                 estimated_allowed += medians.get(path, args.fallback_bytes)
                 count += 1
+                action_counts[action] += 1
     except csv.Error:
         # Do not turn malformed/truncated CSV into a plausible partial estimate,
         # or disclose input paths/records in a traceback or parser diagnostic.
@@ -108,10 +110,18 @@ def main():
     difference = estimated_allowed - served
     label = "potentially avoided" if args.action == "would_block" else "estimated avoided"
 
+    if args.action == "all":
+        label = "combined actual/potential avoided"
+
     print("Immution bandwidth estimate")
     print(f"events ({args.action}): {count:,}")
+    if args.action == "all":
+        print("blocked: {:,}; would_block: {:,}".format(
+            action_counts["blocked"], action_counts["would_block"]))
+        print("Monitor events did not prevent responses; their savings are hypothetical.")
     print(f"estimated original responses: {estimated_allowed / 1024 / 1024:,.2f} MiB")
-    print(f"block responses: {served / 1024 / 1024:,.2f} MiB")
+    served_label = "actual/potential block responses" if args.action == "all" else "block responses"
+    print(f"{served_label}: {served / 1024 / 1024:,.2f} MiB")
     print(f"{label}: {difference / 1024 / 1024:,.2f} MiB")
     print()
     print("Assumptions: historical median size for matching 200 responses; otherwise")
