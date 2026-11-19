@@ -165,6 +165,25 @@ class TrafficTests(unittest.TestCase):
         self.assertEqual(self.totals()['browser_like'], 1)
         self.assertEqual(sum(self.reader.summary()['records'].values()), 2)
 
+    def test_permission_change_invalidates_cached_source_observations(self):
+        self.refresh(visit())
+        self.assertEqual(self.totals()['browser_like'], 1)
+        original_mode = self.path.stat().st_mode & 0o777
+        self.path.chmod(0)
+        # Permission failure is injected so this also exercises root-run CI.
+        with patch.object(traffic, 'regular_open', side_effect=PermissionError('synthetic')):
+            self.refresh()
+        self.assertEqual(self.reader.overview()['requests'], 0)
+        self.assertEqual(self.reader.issues[(SITE, 'read_error')], 1)
+        report = '\n'.join(self.reader.report())
+        self.assertIn('INCOMPLETE', report)
+        self.assertIn('STIMA BROWSER: N/D', report)
+        self.assertNotIn(str(self.path), report)
+        self.path.chmod(original_mode)
+        self.refresh()
+        self.assertEqual(self.totals()['browser_like'], 1)
+        self.assertNotIn((SITE, 'read_error'), self.reader.issues)
+
     def test_missing_empty_and_invalid_not_false_zero(self):
         self.refresh()
         self.assertIn('STIMA BROWSER: N/D', '\n'.join(self.reader.report()))

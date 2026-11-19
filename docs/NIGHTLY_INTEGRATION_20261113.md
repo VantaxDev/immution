@@ -86,3 +86,17 @@ head; historical green runs are not substituted.
 3. Operational monitor/proxy/privacy/release evidence remains outstanding;
    synthetic tests cannot satisfy those gates. No Nov19 scheduled receipt was
    present when this slice began; Nov18 verified PR18's 16 successful checks.
+
+## Slice 2 priority update — 2026-11-19
+
+1. New candidate stacked on PR19 invalidates traffic snapshots on filesystem
+   ctime changes, including permission/ACL changes without size/mtime changes.
+   Previously cached counts could hide a newly unreadable explicitly mapped
+   source. Revalidation now reports read_error/INCOMPLETE and N/D when nothing
+   remains readable; restoring permissions recovers observations. Session
+   heuristics and deduplication are unchanged. Synthetic permission-denial
+   reproduction fails before/pass after; injected denial supports root-run CI.
+2. Review candidate and exact-head CI; retain PR14–19 dependencies. No rollout.
+3. Operational release gates still require independent authorized evidence.
+   ctime invalidation is not continuous monitoring: ACL/parent access changes
+   that do not alter discovered file metadata are not guaranteed detected.
