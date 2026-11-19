@@ -129,7 +129,10 @@ class Traffic:
                         issues[(site, 'file_limit')] += 1
                         continue
                     files.append((site, path))
-                    signature.append((site, str(path), st.st_dev, st.st_ino, st.st_size, st.st_mtime_ns))
+                    # Permission/ACL changes can revoke access without changing size
+                    # or mtime. Revalidate instead of serving cached observations.
+                    signature.append((site, str(path), st.st_dev, st.st_ino,
+                                      st.st_size, st.st_mtime_ns, st.st_ctime_ns))
                 except OSError:
                     issues[(site, 'missing_or_unreadable')] += 1
         return files, (tuple(signature), tuple(sorted(issues.items()))), issues
