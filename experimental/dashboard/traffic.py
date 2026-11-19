@@ -14,12 +14,14 @@ import re
 import stat
 import zlib
 from urllib.parse import unquote, urlsplit
+from time import monotonic
 from timeframes import ROME
 
 BUDGET = 8 * 1024 * 1024  # decompressed across all opt-in traffic sources
 MAX_RECORD = 65536
 MAX_EVENTS = 100000
 MAX_FILES = 128
+READ_RETRY_SECONDS = 30
 CATEGORIES = ('browser_like', 'ambiguous', 'declared_bot', 'scanner', 'internal')
 COMBINED = re.compile(
     r'^(\S+) \S+ \S+ \[([^\]]+)\] "([A-Z]+) ([^"\s]+) HTTP/[0-9.]+" '
@@ -82,6 +84,7 @@ class Traffic:
         self.issues = Counter()
         self.available = set()
         self.signature = None
+        self.read_retry_at = 0
         self.previous_sizes = {}
         self.bytes_read = 0
         self.window = self.cutoff = None
@@ -141,9 +144,14 @@ class Traffic:
         self.window, self.cutoff, self._summary = window, now, None
         files, signature, discovered = self.discover()
         signature = (window.key, signature)
-        if signature == self.signature:
+        tick = monotonic()
+        read_failed = any(name == 'read_error' for _, name in self.issues)
+        if signature == self.signature and not (read_failed and tick >= self.read_retry_at):
             return  # Only sanitized events cached; cutoff still applied anew.
         self.signature = signature
+        # Failed reads are not permanent cache entries. Retry at most once per
+        # interval on caller refresh, with the same budgets and no background loop.
+        self.read_retry_at = tick + READ_RETRY_SECONDS
         for site, path in files:
             try:
                 size = path.stat().st_size

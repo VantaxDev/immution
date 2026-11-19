@@ -165,6 +165,34 @@ class TrafficTests(unittest.TestCase):
         self.assertEqual(self.totals()['browser_like'], 1)
         self.assertEqual(sum(self.reader.summary()['records'].values()), 2)
 
+    def test_transient_read_failure_retries_after_cooldown_without_metadata_change(self):
+        self.path.write_text(visit())
+        before = self.path.stat()
+        with patch.object(traffic, 'monotonic', return_value=100, create=True), \
+                patch.object(traffic, 'regular_open', side_effect=PermissionError('private-sentinel')):
+            self.refresh()
+        self.assertEqual(self.reader.issues[(SITE, 'read_error')], 1)
+        self.assertIn('INCOMPLETE', '\n'.join(self.reader.report()))
+        self.assertIn('STIMA BROWSER: N/D', '\n'.join(self.reader.report()))
+        with patch.object(traffic, 'monotonic', return_value=110, create=True), \
+                patch.object(traffic, 'regular_open') as opener:
+            self.refresh()
+            opener.assert_not_called()  # no retry storm on rapid refreshes
+        with patch.object(traffic, 'monotonic', return_value=131, create=True):
+            self.refresh()
+        self.assertEqual(self.totals()['browser_like'], 1)
+        self.assertEqual(self.reader.overview()['requests'], 2)
+        self.assertNotIn((SITE, 'read_error'), self.reader.issues)
+        self.assertNotIn('INCOMPLETE', '\n'.join(self.reader.report()))
+        after = self.path.stat()
+        self.assertEqual((before.st_size, before.st_mtime_ns, before.st_ctime_ns),
+                         (after.st_size, after.st_mtime_ns, after.st_ctime_ns))
+        with patch.object(traffic, 'monotonic', return_value=200, create=True), \
+                patch.object(traffic, 'regular_open') as opener:
+            self.refresh()
+            opener.assert_not_called()  # recovered success remains cached
+        self.assertNotIn('private-sentinel', '\n'.join(self.reader.report()))
+
     def test_permission_change_invalidates_cached_source_observations(self):
         self.refresh(visit())
         self.assertEqual(self.totals()['browser_like'], 1)
