@@ -37,6 +37,9 @@ def site_label(value):
     value = value.lower()
     if value in ('all', 'unknown') or len(value) > 253 or not re.fullmatch(r'[a-z0-9](?:[a-z0-9.-]*[a-z0-9])?', value):
         raise ValueError('access-log site must be a DNS name')
+    if any(len(label) > 63 or not re.fullmatch(r'[a-z0-9](?:[a-z0-9-]*[a-z0-9])?', label)
+           for label in value.split('.')):
+        raise ValueError('access-log site must be a DNS name')
     numeric = r'(?:[0-9]+|0x[0-9a-f]+)'
     if re.fullmatch(numeric + r'(?:\.' + numeric + r')*', value):
         raise ValueError('access-log site must not be an address')

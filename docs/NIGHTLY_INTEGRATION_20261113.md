@@ -115,3 +115,14 @@ head; historical green runs are not substituted.
    cadence. Entire snapshot is retried, so a failed source can cause healthy
    sources to be reread; scan budgets still apply. No continuous coverage claim
    or operational release gate completion is implied.
+
+## Scheduled follow-up — 2026-11-20
+
+1. Fixed explicit access-log mapping validation: reject empty DNS labels,
+   labels with leading/trailing hyphens, and labels longer than 63 characters.
+   Previously these malformed mappings were accepted despite the DNS-name
+   contract. Uppercase normalization, single-label names and valid hyphens
+   remain supported. No DNS lookup, source reads or metric changes added.
+2. Synthetic regression: four malformed names fail before/pass after; focused
+   traffic tests pass. Candidate stacks on PR21 exact head 1635b7a.
+3. Review stack and operational release gates remain pending. No merge/deploy.
