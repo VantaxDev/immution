@@ -165,6 +165,17 @@ class TrafficTests(unittest.TestCase):
         self.assertEqual(self.totals()['browser_like'], 1)
         self.assertEqual(sum(self.reader.summary()['records'].values()), 2)
 
+    def test_source_spec_validates_each_dns_label(self):
+        for site in ('example..invalid', 'example.-bad.invalid',
+                     'example.bad-.invalid', 'a' * 64 + '.invalid'):
+            with self.subTest(site=site), self.assertRaises(ValueError):
+                traffic.source_spec(site + '=/synthetic/unused')
+        for site in ('EXAMPLE.INVALID', 'a' * 63 + '.invalid',
+                     'my-site.example.invalid', 'localhost'):
+            with self.subTest(site=site):
+                self.assertEqual(traffic.source_spec(site + '=/synthetic/unused')[0],
+                                 site.lower())
+
     def test_transient_read_failure_retries_after_cooldown_without_metadata_change(self):
         self.path.write_text(visit())
         before = self.path.stat()
