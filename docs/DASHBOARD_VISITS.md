@@ -123,3 +123,17 @@ and gate-event privacy/nonregular-source prerequisites are retained.
 Tests use synthetic documentation IP ranges, no production logs. The visual
 preview is generated from the actual terminal `panel_rows` renderer, explicitly
 marked synthetic; it does not certify a production terminal or deployed site.
+
+## Development checkpoint — 2026-11-21
+
+Completed: the compact gate-view traffic card now shows UNKNOWN/INCOMPLETE
+when a selected source has issues, including no-record and multisite states.
+Empty sources without detected errors remain N/D with UNKNOWN coverage, not
+zero visits. For multisite cards the warning applies to the selected set;
+select one site or use --once / --export for source-specific diagnostics.
+No metric, parsing, retry, budget or cache behavior changed.
+
+Remaining backlog: review the unmerged PR22→21→20→19→18…14 stack and exact-head
+CI; operational rollout/coverage evidence requires separate authorization.
+No new functional defect asserted without reproduction. Very narrow terminal
+viewports can still truncate card details; full reports remain the fallback.

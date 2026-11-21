@@ -338,15 +338,16 @@ class Traffic:
         if not labels:
             return ['VISITE / STIMA BROWSER: N/D (access log non configurato)', 'Non persone; non deducibili dagli eventi del gate.']
         summary = self.summary()
+        partial = any(label in labels for label, _ in self.issues)
+        coverage = 'UNKNOWN' + ('/INCOMPLETE' if partial else '')
         if len(labels) != 1:
-            return ['VISITE / STIMA BROWSER: %s siti (n/p seleziona)' % len(labels), 'Non persone; dettaglio per sito e giorno: --once / --export']
+            return ['VISITE / STIMA BROWSER: %s siti (n/p seleziona)' % len(labels), 'Non persone | %s | dettaglio: --once / --export' % coverage]
         label = labels[0]
         keys = sorted(key for key in summary['records'] if key[0] == label)
         if not keys:
-            return ['VISITE / STIMA BROWSER: N/D | ' + label, 'Nessuna osservazione utilizzabile; copertura UNKNOWN.']
+            return ['VISITE / STIMA BROWSER: N/D | ' + label, 'Nessuna osservazione utilizzabile; copertura %s.' % coverage]
         key = keys[-1]
         count = summary['counts'][key]
-        partial = any(k[0] == label for k in self.issues)
         return ['VISITE / STIMA BROWSER %s osservate | %s' % (count['browser_like'], key[1]),
                 'Non persone | UNKNOWN%s | %s' % ('/INCOMPLETE' if partial else '', label),
                 'Ambigue %s | UA bot/tool %s | scanner %s | interne %s' % (count['ambiguous'], count['declared_bot'], count['scanner'], count['internal']),

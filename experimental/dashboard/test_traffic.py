@@ -223,6 +223,34 @@ class TrafficTests(unittest.TestCase):
         self.assertEqual(self.totals()['browser_like'], 1)
         self.assertNotIn((SITE, 'read_error'), self.reader.issues)
 
+    def test_card_empty_source_health_is_visible_without_private_paths(self):
+        self.refresh()
+        card = '\n'.join(self.reader.card())
+        self.assertIn('N/D', card)
+        self.assertIn('UNKNOWN/INCOMPLETE', card)
+        self.assertNotIn(str(self.path), card)
+        self.refresh('')
+        card = '\n'.join(self.reader.card())
+        self.assertIn('UNKNOWN', card)
+        self.assertNotIn('INCOMPLETE', card)
+        self.assertIn('N/D', card)
+        self.refresh('private invalid record\n')
+        card = '\n'.join(self.reader.card())
+        self.assertIn('UNKNOWN/INCOMPLETE', card)
+        self.assertNotIn('private invalid record', card)
+
+    def test_card_multisite_surfaces_partial_source_health(self):
+        self.reader = traffic.Traffic([(SITE, self.path),
+                                       ('other.invalid', self.path.parent / 'absent.log')])
+        self.refresh(visit())
+        card = '\n'.join(self.reader.card())
+        self.assertIn('2 siti', card)
+        self.assertIn('UNKNOWN/INCOMPLETE', card)
+        self.assertIn('--once', card)
+        self.assertNotIn(str(self.path.parent), card)
+        self.assertNotIn('INCOMPLETE', '\n'.join(self.reader.card(SITE)))
+        self.assertIn('INCOMPLETE', '\n'.join(self.reader.card('other.invalid')))
+
     def test_missing_empty_and_invalid_not_false_zero(self):
         self.refresh()
         self.assertIn('STIMA BROWSER: N/D', '\n'.join(self.reader.report()))
