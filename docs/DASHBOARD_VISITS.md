@@ -137,3 +137,17 @@ Remaining backlog: review the unmerged PR22→21→20→19→18…14 stack and e
 CI; operational rollout/coverage evidence requires separate authorization.
 No new functional defect asserted without reproduction. Very narrow terminal
 viewports can still truncate card details; full reports remain the fallback.
+
+
+## Development checkpoint — 2026-11-22
+
+Completed: reject malformed Apache timestamp offsets before Python can normalize
+invalid minute fields (for example +0060) into apparently usable observations.
+Such records now contribute to unparseable/INCOMPLETE, not observed counts.
+Valid fractional-hour offsets and DST window semantics remain unchanged.
+Synthetic regression reproduced on PR23 before the fix; focused timestamp and
+window tests verify the fix. No new dependency or metric definition change.
+
+Backlog: PR23 exact-head CI was verified by the 2026-11-21 workspace audit;
+review/integration of the unmerged stack remains separate from this fix.
+Operational coverage evidence still requires separate authorization.

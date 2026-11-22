@@ -60,7 +60,10 @@ def source_spec(value):
 def timestamp(value):
     # Locale-independent Apache %d/%b/%Y:%H:%M:%S %z.
     match = re.fullmatch(r'(\d{2})/([A-Z][a-z]{2})/(\d{4}):(\d{2}):(\d{2}):(\d{2}) ([+-]\d{4})', value)
-    if not match or match[2] not in MONTHS:
+    if (not match or match[2] not in MONTHS or
+            int(match[7][1:3]) > 23 or int(match[7][3:5]) > 59):
+        # fromisoformat normalizes offsets such as +0060 to +0100. Apache
+        # timestamps require valid HHMM fields, not repaired observations.
         raise ValueError('timestamp')
     normalized = '%s-%02d-%sT%s:%s:%s%s' % (match[3], MONTHS[match[2]], match[1], match[4], match[5], match[6], match[7])
     return datetime.fromisoformat(normalized).astimezone(timezone.utc)

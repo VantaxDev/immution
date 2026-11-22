@@ -165,6 +165,21 @@ class TrafficTests(unittest.TestCase):
         self.assertEqual(self.totals()['browser_like'], 1)
         self.assertEqual(sum(self.reader.summary()['records'].values()), 2)
 
+    def test_invalid_offset_minutes_are_not_normalized_into_observations(self):
+        valid = visit()
+        invalid = ''.join(visit().replace(' +0000]', ' ' + offset + ']')
+                          for offset in ('+0060', '-0060', '+1261', '+2400'))
+        self.refresh(valid + invalid)
+        self.assertEqual(sum(self.reader.summary()['records'].values()), 2)
+        self.assertEqual(self.totals()['browser_like'], 1)
+        self.assertEqual(self.reader.issues[(SITE, 'unparseable')], 8)
+        self.assertIn('INCOMPLETE', '\n'.join(self.reader.report()))
+        # Non-hour offsets remain valid and denote the correct UTC instant.
+        self.assertEqual(traffic.timestamp('06/Nov/2026:10:00:00 +0545'),
+                         datetime.fromisoformat('2026-11-06T04:15:00+00:00'))
+        self.assertEqual(traffic.timestamp('06/Nov/2026:10:00:00 -0330'),
+                         datetime.fromisoformat('2026-11-06T13:30:00+00:00'))
+
     def test_source_spec_validates_each_dns_label(self):
         for site in ('example..invalid', 'example.-bad.invalid',
                      'example.bad-.invalid', 'a' * 64 + '.invalid'):
