@@ -60,7 +60,7 @@ class LayoutTests(unittest.TestCase):
                 numeric = live.panel_rows(self.r, host, 'unknown', width, False, 50000, 2000)
                 self.assertTrue(all(len(text) <= width for text, _ in numeric))
         rows = live.panel_rows(self.r, 'example.invalid', 'unknown', 100, False)
-        self.assertTrue(any(text.startswith('> example.invalid') and style == 'selected' for text, style in rows))
+        self.assertTrue(any('example.invalid' in text and style == 'selected' for text, style in rows))
         self.assertIn('HELP / READ ONLY', '\n'.join(text for text, _ in live.panel_rows(self.r, 'example.invalid', 'unknown', 100, True)))
 
 

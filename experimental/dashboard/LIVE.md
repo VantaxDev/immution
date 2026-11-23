@@ -4,7 +4,7 @@ Read-only gate-event viewer with opt-in traffic estimates, separate from the
 engine, installer and unchanged
 offline terminal.py prototype. Standard library only: curses, zoneinfo and
 system Europe/Rome timezone data. No packages, endpoints or services added.
-Run from this checkout: **live.py, presentation.py, timeframes.py and traffic.py
+Run from this checkout: **live.py, presentation.py, cockpit.py, timeframes.py and traffic.py
 must stay together** (copying only live.py from an older installation is not enough).
 
 ```sh
@@ -266,7 +266,7 @@ existing default Rome calendar day; other ranges retain daily breakdowns in
 `--once`/`--export`. Counts only, no identity/path/UA export or new tracking.
 
 See [metric, configuration, limits and privacy](../../docs/DASHBOARD_VISITS.md).
-Copy all **four** runtime modules: live.py, presentation.py, timeframes.py,
+Copy all **five** runtime modules: live.py, presentation.py, cockpit.py, timeframes.py,
 traffic.py. Engine, gate and installation scripts are unchanged.
 
 
@@ -287,3 +287,22 @@ snapshot reports INCOMPLETE; subsequent caller refreshes may retry after at
 least 30 monotonic seconds even if source metadata are unchanged. Successful
 snapshots remain cached. There is no background retry or sleep, and a retry
 rebuilds the bounded snapshot rather than adding duplicate observations.
+
+### ASCII cockpit (23 November candidate; NOT deployed)
+
+The interactive viewport is now a framed cockpit: KPI deck, independent group
+and block scales, sorted mapped sites and reserved coverage/range/controls.
+80x24 uses 79 printable columns (last terminal column reserved for curses).
+Wide screens expand panels; 40x14 uses a compact frame; tiny screens prioritize
+synthetic label, coverage and quit. Hidden sites are disclosed, not dropped.
+`v` changes instrument priority; `?` replaces charts with help. All keys,
+collectors and the full `--once` / `--export` audit dump are unchanged.
+Missing observations stay N/D; browser groups are estimated sessions, not people.
+Default terminal palette is inherited. Daily detail is in the full dump, not
+squeezed into the cockpit. Requires cockpit.py beside the other modules.
+
+Offline review: run `python3 experimental/dashboard/live.py --demo` or append
+`--once`. This does not read production logs or probe services. No rollout is
+authorized by this source change. A future rollout must copy all five runtime
+modules together into a new versioned directory, preserve the previous launcher
+and version, verify an agreed fixed cutoff and obtain separate authorization.
