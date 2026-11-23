@@ -157,3 +157,8 @@ Operational coverage evidence still requires separate authorization.
 Completed: ASCII panel redesign at 80x24, compact/tiny layouts, themed defaults,
 independent scales and synthetic captures; collector/policy unchanged.
 Pending: full stack review and separately authorized rollout. Not installed.
+
+Cockpit PR25 follow-up: restored configured savings in compact/tiny views,
+space-budgeted ASCII savings digits (>=27 rows), and explicit hidden/monitor-only
+Other totals. Full dashboard suite required after redesign; original evidence
+retained separately from follow-up logs and captures.

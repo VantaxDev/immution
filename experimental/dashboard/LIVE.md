@@ -306,3 +306,15 @@ Offline review: run `python3 experimental/dashboard/live.py --demo` or append
 authorized by this source change. A future rollout must copy all five runtime
 modules together into a new versioned directory, preserve the previous launcher
 and version, verify an agreed fixed cutoff and obtain separate authorization.
+
+#### Cockpit follow-up: savings and hidden hosts
+
+Explicit byte assumptions now use the same Decimal calculation in compact,
+tiny (when enough rows fit) and full layouts. `N/D` is reserved for unavailable
+assumptions, never substituted for a configured zero, positive or negative
+estimate. The compact label is `MB STIMA:`. At 80x24 the instruments, three site
+rows and coverage/footer consume all 24 rows; savings use numeric text there.
+At height >=27, three additional ASCII digit rows are shown if the number fits
+the available width (and help is closed). These rows do not displace sites or
+warnings. Hidden/monitor-only claimed Hosts retain explicit Other host count,
+blocked and allowed-monitor totals, separately from mapped traffic sites.

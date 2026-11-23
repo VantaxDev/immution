@@ -31,4 +31,27 @@ class Cockpit(unittest.TestCase):
             finally:
                 r.close()
 
+    def test_configured_savings_survive_every_layout(self):
+        from presentation import savings_rows
+        with tempfile.TemporaryDirectory() as root:
+            r = make_reader(Path(root))
+            try:
+                for width, height in ((79, 24), (119, 30), (39, 14), (24, 8)):
+                    for baseline, block in ((50000, 2000), (0, 2000), (2000, 2000)):
+                        with self.subTest(width=width, height=height, baseline=baseline):
+                            expected = savings_rows(4, 0, baseline, block)[0].split(': ')[-1]
+                            rows = panel_rows(r, 'all', 'DEMO', width, baseline=baseline,
+                                              block_bytes=block, height=height)
+                            text = '\n'.join(t for t, _ in rows)
+                            self.assertIn('MB STIMA: ' + expected, text)
+                            self.assertNotIn('MB RISPARMIATI: N/D', text)
+                for height in (24, 30):
+                    rows = panel_rows(r, 'all', 'DEMO', 79, baseline=50000,
+                                      block_bytes=2000, height=height)
+                    glyphs = savings_rows(4, 75, 50000, 2000)[1:4]
+                    found = [any(g.strip() in t for t, style in rows if style == 'metric') for g in glyphs]
+                    self.assertEqual(found, [height >= 27] * 3)
+            finally:
+                r.close()
+
 if __name__=='__main__': unittest.main()

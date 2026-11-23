@@ -210,8 +210,8 @@ class RangeReaderTests(unittest.TestCase):
                             self.assertTrue(rows[-1][0].startswith('q'))
         text = '\n'.join(t for t, _ in live.panel_rows(reader, 'all', 'unknown', 79, height=24, top_n=1))
         for part in ('MB RISPARMIATI: N/D', 'TOTAL BLOCKED 5', 'TOTAL MONITOR 13',
-                     'OTHER 3 hosts incl hidden/monitor-only: B 3 | M 12', 'History UNKNOWN',
-                     'Selftest excluded', '2026-10-30', '2026-10-31'):
+                     'Other 3 hosts: B 3 M 12', 'History UNKNOWN',
+                     'Selftest esclusi B=1 M=0', '2026-10-30', '2026-10-31'):
             self.assertIn(part, text)
         small = live.panel_rows(reader, 'all', 'unknown', 24, height=8)
         self.assertLessEqual(len(small), 8)
@@ -278,12 +278,23 @@ class RangeReaderTests(unittest.TestCase):
 
     def test_ascii_digits_only_when_both_dimensions_allow(self):
         reader = self.make_hosts()
-        for height, width, metric_rows in ((24, 79, 4), (30, 79, 7), (30, 10, 2)):
+        # Semantic contract, not the old list renderer's number of bold rows.
+        # 24 rows are reserved for cockpit instruments/sites/coverage; +3 allows
+        # the three actual glyph lines without dropping any of those sections.
+        from presentation import savings_rows
+        glyphs = savings_rows(5, 75, 50000, 2000)[1:4]
+        for height, width, digits in ((24, 79, False), (27, 79, True),
+                                       (30, 79, True), (30, 10, False)):
             rows = live.panel_rows(reader, 'all', 'unknown', width, baseline=50000,
                                    block_bytes=2000, height=height)
-            self.assertEqual(sum(style == 'metric' for _, style in rows), metric_rows)
+            for glyph in glyphs:
+                self.assertEqual(any(glyph.strip() in text for text, style in rows
+                                     if style == 'metric'), digits)
+            if width >= 24:
+                self.assertIn('MB STIMA: 0.24', '\n'.join(text for text, _ in rows))
             self.assertLessEqual(len(rows), height)
             self.assertTrue(all(len(text) <= width for text, _ in rows))
+
 
 
 if __name__ == '__main__':

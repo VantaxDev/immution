@@ -6,6 +6,8 @@ def render(reader, site, status, width, height, help_visible, baseline,
     width, height = max(1, width), max(0, height)
     if not height:
         return []
+    if view == 'auto':
+        view = 'traffic' if reader.traffic.sources else 'gate'
     summary = reader.summary(site)
     gate = summary['counts']
     overview = reader.traffic.overview(site)
@@ -18,6 +20,9 @@ def render(reader, site, status, width, height, help_visible, baseline,
         if key not in ('outside_range', 'rotation_compression_seen')))
     coverage = 'UNKNOWN' + (' / INCOMPLETE' if incomplete else '')
     period = '%s..%s) Roma' % (reader.window.start.date(), reader.window.end.date())
+    # Use the same Decimal calculation/availability contract as the full dump.
+    savings = savings_rows(gate['blocked'], 0, baseline, block_bytes)[0]
+    savings = savings.replace('MB RISPARMIATI / STIMA:', 'MB STIMA:')
     rows = []
     def fit(text, size):
         text = safe(text)
@@ -38,8 +43,8 @@ def render(reader, site, status, width, height, help_visible, baseline,
     # Always reserve the last row for quit. Tiny terminals cannot show details.
     if height < 10 or width < 32:
         for text in (('DATI SINTETICI' if demo else marker), 'IMMUTION COCKPIT', coverage, 'Browser %s STIMA' % browser,
-                     'Non persone; HTTP %s' % (requests or 'N/D')):
-            add(text)
+                     'Non persone; HTTP %s' % (requests or 'N/D'), savings):
+            add(text, 'metric' if text == savings else 'normal')
         return rows[:height-1] + [(fit('q quit ? help', width), 'section')]
     edge((marker + ' / COCKPIT') if width < 70 else ('IMMUTION COCKPIT / ' + marker))
     if width < 70 or height < 24:
@@ -55,7 +60,7 @@ def render(reader, site, status, width, height, help_visible, baseline,
         else:
             body = ['Amb %s | Bot UA %s' % (counts['ambiguous'] if requests else 'N/D', counts['declared_bot'] if requests else 'N/D'),
                     'Selftest esclusi B=%s M=%s' % (summary['tests']['blocked'], summary['tests']['would_block']),
-                    'MB N/D senza baseline; Prioris escluso']
+                    savings]
         for text in body[:max(0, height-10)]:
             line(text)
         while len(rows) < height-2:
@@ -64,7 +69,7 @@ def render(reader, site, status, width, height, help_visible, baseline,
         add('q quit ? help v vista t periodo r refresh', 'section')
         return rows[:height]
     # 24-row baseline: full-width KPI deck and independent, scaled instruments.
-    line('BROWSER %s STIMA | HTTP %s | BLOCK %s | MONITOR %s' %
+    line('BROWSER %s STIMA | HTTP %s | TOTAL BLOCKED %s | TOTAL MONITOR %s' %
          (browser, requests or 'N/D', gate['blocked'], gate['would_block']), 'metric')
     line('Sessioni-browser != persone | monitor consentite | IP != bot', 'dim')
     edge('TRAFFICO / GRUPPI OSSERVATI' if view != 'gate' else 'BLOCCHI / CLAIMED HOST')
@@ -76,10 +81,10 @@ def render(reader, site, status, width, height, help_visible, baseline,
         right = ['LIMITI / READ ONLY', 'STIMA browser, non persone', 'UA falsificabili; NAT unisce', 'N/D: nessun record utilizzabile', 'Gate != access log vhost', 'Prioris escluso dal traffico', 'Selftest esclusi dal gate']
     else:
         left = bar_chart(traffic_categories(overview), left_width, 'gruppi')
-        ranked, other, _ = top_hosts(summary, min(top_n, 3), site)
+        ranked, other, other_hosts = top_hosts(summary, min(top_n, 3), site)
         right = bar_chart([(host, values['blocked']) for host, values in ranked] + [('Other', other['blocked'])], right_width, 'B records')
-        right += ['M %s consentite, scala separata' % gate['would_block']]
-        right += [savings_rows(gate['blocked'], 0, baseline, block_bytes)[0]]
+        right += ['Other %s hosts: B %s M %s' % (other_hosts, other['blocked'], other['would_block'])]
+        right += [savings]
     if view == 'gate' and not help_visible:
         left, right = right, left
     # Compact scale headers leave the full symbol legend on its own row.
@@ -93,12 +98,18 @@ def render(reader, site, status, width, height, help_visible, baseline,
     if overview['issue_counts'].get('read_budget'):
         detail = '8 MiB prefisso; record recenti possibilmente esclusi'
     line(('Problemi: ' + detail) if detail else 'Gate != log vhost | claimed Host non verificato', 'dim')
+    # Three glyph rows need three *additional* rows, never steal warnings/sites.
+    digit_rows = savings_rows(gate['blocked'], inner, baseline, block_bytes)
+    show_digits = height >= 27 and not help_visible and len(digit_rows) == 5
+    if show_digits:
+        for glyph in digit_rows[1:4]:
+            line(glyph, 'metric')
     edge('SITI MAPPATI / ' + fit(site, width-25))
     if site != 'all':
         rows[-1] = (rows[-1][0], 'selected')
     line('%-28s %9s %8s %8s %8s' % ('SITO', 'BROWSER', 'BOT/UA', 'AMBIGUI', 'HTTP'), 'section')
     sites = sorted(overview['sites'].items())
-    slots = 3 + max(0, height-24)
+    slots = 3 + max(0, height-24) - (3 if show_digits else 0)
     visible = slots if len(sites) <= slots else slots-1
     for name, entry in sites[:visible]:
         c = entry['counts']
@@ -113,7 +124,7 @@ def render(reader, site, status, width, height, help_visible, baseline,
     line('Selftest esclusi B=%s M=%s | Prioris escluso traffico | N/D != zero' %
          (summary['tests']['blocked'], summary['tests']['would_block']))
     line('Range [' + period + ' | ' + reader.window.name)
-    line('Stato: ' + status + ' | continuita UNKNOWN', 'dim')
+    line('History UNKNOWN | Stato: ' + status, 'dim')
     edge()
     add('q quit  n/p sito  0 tutti  v vista  1/2/3/4 periodo  ? help  r refresh', 'section')
     return rows[:height]
