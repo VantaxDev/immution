@@ -52,25 +52,25 @@ class InsightsTests(unittest.TestCase):
 
     def test_default_primary_metrics_stale_record_and_missing_sources(self):
         text = self.panel()
-        for wanted in ('IMMUTION / TRAFFICO', 'STIMA BROWSER 3 osservate',
-                       'Richieste HTTP 10', 'GRUPPI OSSERVATI', '#=1',
-                       'non recente', 'UNKNOWN / INCOMPLETE', 'problemi 1',
-                       'missing_or_unreadable', 'N/D', 'Gate != log vhost'):
+        for wanted in ('IMMUTION COCKPIT', 'BROWSER 3 STIMA',
+                       'HTTP 10', 'GRUPPI OSSERVATI', '#=1',
+                       'UNKNOWN / INCOMPLETE',
+                       'missing_or_unreadable', 'N/D'):
             self.assertIn(wanted, text)
         for label in ('Ambigue', 'Bot/tool UA', 'Scanner', 'Interne'):
             self.assertRegex(text, label + r' +1 \|#')
         self.assertNotIn('unique', text)
         self.assertNotIn('probabilita', text)
         selected = self.panel(SITE)
-        self.assertIn('STIMA BROWSER 2 osservate', selected)
+        self.assertIn('BROWSER 2 STIMA', selected)
         self.assertNotIn('other.invalid', selected)
         self.assertNotIn('INCOMPLETE', selected)
         missing = self.panel('missing.invalid')
-        self.assertIn('STIMA BROWSER: N/D', missing)
-        self.assertIn('Non significa zero', missing)
+        self.assertIn('BROWSER N/D STIMA', missing)
+        self.assertIn('N/D != zero', missing)
         unmapped = self.panel('unmapped.invalid', view='traffic')
-        self.assertIn('--access-log SITO=FILE', unmapped)
-        self.assertIn('gate non misurano le visite', unmapped)
+        self.assertIn('BROWSER N/D STIMA', unmapped)
+        self.assertIn('Gate != log vhost', unmapped)
 
     def test_partial_coverage_view_explains_budget_and_scopes_issue_names(self):
         # Synthetic issue evidence: no private file paths or raw records in UI.
@@ -90,13 +90,11 @@ class InsightsTests(unittest.TestCase):
                                row(stamp=(NOW-timedelta(seconds=60)).isoformat()))
         self.r.refresh(NOW)
         text = self.panel(SITE)
-        self.assertIn('recente (<=15m)', text)
-        self.assertIn('2026-11-04     N/D', text)
-        self.assertIn('2026-11-05       0', text)
-        self.assertIn('2026-11-06       0', text)
-        self.assertIn('Ultimi 3/7 giorni', text)
-        self.assertIn('STIMA BROWSER 0 osservate', text)
-        self.assertIn('Non persone', text)
+        daily = self.r.traffic.overview(SITE)['daily']
+        self.assertEqual(len(daily), 2)
+        self.assertTrue(all(d['counts']['browser_like'] == 0 for d in daily.values()))
+        self.assertIn('BROWSER 0 STIMA', text)
+        self.assertIn('!= persone', text)
 
     def test_period_filter_and_cutoff_recompute_without_accumulating(self):
         self.r.set_timeframe('today')
@@ -112,7 +110,7 @@ class InsightsTests(unittest.TestCase):
             self.access.write_text(contents)
             self.r.refresh(NOW)
             text = self.panel(SITE)
-            self.assertIn('STIMA BROWSER: N/D', text)
+            self.assertIn('BROWSER N/D STIMA', text)
             self.assertNotIn('SECRET', text)
             if contents:
                 self.assertIn('INCOMPLETE', text)
@@ -136,8 +134,8 @@ class InsightsTests(unittest.TestCase):
                         if height:
                             self.assertTrue(rows[-1][0].startswith('q'))
         self.assertIn('UNKNOWN', self.panel(width=40, height=8))
-        self.assertIn('Bot/tool UA', self.panel(width=40, height=14))
-        self.assertIn('TOTAL BLOCKED', self.panel(view='gate'))
+        self.assertIn('Bot UA', self.panel(width=40, height=14))
+        self.assertIn('BLOCK', self.panel(view='gate'))
         self.assertIn('N/D', self.panel('unmapped.invalid', view='traffic'))
 
     def test_screen_toggle_range_and_mapped_site_navigation(self):
@@ -154,11 +152,11 @@ class InsightsTests(unittest.TestCase):
         refresh = self.r.refresh
         with patch.object(live.time, 'monotonic', return_value=1), patch.object(live, 'health', return_value='unknown'), patch.object(self.r, 'refresh', side_effect=lambda: refresh(NOW)):
             live.screen_main(screen, c, self.r, args)
-        self.assertIn('TRAFFICO', frames[0][0])
+        self.assertIn('TRAFFICO', '\n'.join(frames[0]))
         self.assertIn('READ ONLY', frames[1][0])
-        self.assertIn('TRAFFICO', frames[2][0])
+        self.assertIn('TRAFFICO', '\n'.join(frames[2]))
         self.assertIn(SITE, '\n'.join(frames[3]))
-        self.assertIn('yesterday', frames[4][0])
+        self.assertIn('yesterday', '\n'.join(frames[4]))
 
 
     def test_real_pty_demo_toggle_filter_resize_and_restore(self):
@@ -191,8 +189,8 @@ class InsightsTests(unittest.TestCase):
             if expected:
                 self.assertIn(expected, chunk)
         try:
-            receive(b'BROWSER 42 osservate')
-            os.write(master, b'v'); receive(b'READ ONLY')
+            receive(b'BROWSER 42 STIMA')
+            os.write(master, b'v'); receive(b'BLOCCHI')
             os.write(master, b'v'); receive(b'TRAFFICO')
             os.write(master, b'n'); receive(b'archivio.invalid')
             os.write(master, b'n'); receive(b'bottega')  # curses may retain the unchanged .invalid suffix

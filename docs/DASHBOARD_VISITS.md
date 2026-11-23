@@ -24,7 +24,7 @@ mixed global log. The mapping is an operator assertion, not inferred from an
 untrusted Host header. Use the canonical site matching the referrer host;
 aliases such as www are not automatically merged or considered same-site.
 No installer, logging permissions, vhost, service or scheduler is changed.
-`traffic.py` must accompany live.py, presentation.py and timeframes.py.
+`traffic.py` and `cockpit.py` must accompany live.py, presentation.py and timeframes.py.
 
 ## Metric (version 1, intentionally conservative and unvalidated)
 
@@ -151,3 +151,14 @@ window tests verify the fix. No new dependency or metric definition change.
 Backlog: PR23 exact-head CI was verified by the 2026-11-21 workspace audit;
 review/integration of the unmerged stack remains separate from this fix.
 Operational coverage evidence still requires separate authorization.
+
+## 2026-11-23 cockpit source candidate
+
+Completed: ASCII panel redesign at 80x24, compact/tiny layouts, themed defaults,
+independent scales and synthetic captures; collector/policy unchanged.
+Pending: full stack review and separately authorized rollout. Not installed.
+
+Cockpit PR25 follow-up: restored configured savings in compact/tiny views,
+space-budgeted ASCII savings digits (>=27 rows), and explicit hidden/monitor-only
+Other totals. Full dashboard suite required after redesign; original evidence
+retained separately from follow-up logs and captures.

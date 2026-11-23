@@ -412,4 +412,4 @@ class TrafficTests(unittest.TestCase):
             self.assertLessEqual(len(panel), height)
             self.assertTrue(all(len(line) <= width for line, _ in panel))
         panel = live.panel_rows(r, SITE, 'synthetic', 79, height=24)
-        self.assertIn('STIMA BROWSER 1 osservate', '\n'.join(line for line, _ in panel))
+        self.assertIn('BROWSER 1 STIMA', '\n'.join(line for line, _ in panel))
