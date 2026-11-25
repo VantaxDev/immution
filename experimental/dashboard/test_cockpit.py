@@ -31,6 +31,30 @@ class Cockpit(unittest.TestCase):
             finally:
                 r.close()
 
+    def test_compact_scanner_and_internal_counts(self):
+        with tempfile.TemporaryDirectory() as root:
+            r = make_reader(Path(root))
+            try:
+                for site in ('all', 'rivista.invalid', 'archivio.invalid'):
+                    overview = r.traffic.overview(site)
+                    before = overview['counts'].copy()
+                    for width, height in ((39, 14), (69, 24), (79, 14)):
+                        with self.subTest(site=site, width=width, height=height):
+                            rows = panel_rows(r, site, 'DEMO', width, height=height)
+                            text = '\n'.join(t for t, _ in rows)
+                            counts = overview['counts']
+                            scanner, internal = ((counts['scanner'], counts['internal'])
+                                                 if overview['requests'] else ('N/D', 'N/D'))
+                            self.assertIn('Scanner %s | Interne %s' % (scanner, internal), text)
+                            self.assertIn('Selftest esclusi', text)
+                            self.assertIn('MB RISPARMIATI: N/D', text)
+                            self.assertIn('UNKNOWN', text)
+                            self.assertEqual(len(rows), height)
+                            self.assertTrue(all(len(t) <= width and t.isascii() for t, _ in rows))
+                    self.assertEqual(before, r.traffic.overview(site)['counts'])
+            finally:
+                r.close()
+
     def test_configured_savings_survive_every_layout(self):
         from presentation import savings_rows
         with tempfile.TemporaryDirectory() as root:

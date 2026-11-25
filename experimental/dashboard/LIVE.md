@@ -318,3 +318,11 @@ At height >=27, three additional ASCII digit rows are shown if the number fits
 the available width (and help is closed). These rows do not displace sites or
 warnings. Hidden/monitor-only claimed Hosts retain explicit Other host count,
 blocked and allowed-monitor totals, separately from mapped traffic sites.
+
+### Compact traffic categories
+
+At 40x14 (39 usable columns) and larger compact layouts, the previously
+unused fourth detail row shows Scanner and Interne separately, alongside
+Amb and Bot UA. Empty mapped sources show N/D, not observed zero.
+Below 14 rows those extra categories remain elided; use --once for details.
+Help still replaces detail rows; this changes no aggregation or source policy.

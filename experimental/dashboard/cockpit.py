@@ -60,7 +60,8 @@ def render(reader, site, status, width, height, help_visible, baseline,
         else:
             body = ['Amb %s | Bot UA %s' % (counts['ambiguous'] if requests else 'N/D', counts['declared_bot'] if requests else 'N/D'),
                     'Selftest esclusi B=%s M=%s' % (summary['tests']['blocked'], summary['tests']['would_block']),
-                    savings]
+                    savings,
+                    'Scanner %s | Interne %s' % (counts['scanner'] if requests else 'N/D', counts['internal'] if requests else 'N/D')]
         for text in body[:max(0, height-10)]:
             line(text)
         while len(rows) < height-2:
