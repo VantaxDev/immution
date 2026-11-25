@@ -62,8 +62,12 @@ def render(reader, site, status, width, height, help_visible, baseline,
                     'Selftest esclusi B=%s M=%s' % (summary['tests']['blocked'], summary['tests']['would_block']),
                     savings,
                     'Scanner %s | Interne %s' % (counts['scanner'] if requests else 'N/D', counts['internal'] if requests else 'N/D')]
-        for text in body[:max(0, height-10)]:
+        # Preserve the 14-row metrics deck; use the next spare row for health.
+        show_status = height >= 15
+        for text in body[:max(0, height-10-int(show_status))]:
             line(text)
+        if show_status:
+            line('Stato: ' + status, 'dim')
         while len(rows) < height-2:
             line()
         edge()

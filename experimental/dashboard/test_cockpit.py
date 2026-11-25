@@ -55,6 +55,29 @@ class Cockpit(unittest.TestCase):
             finally:
                 r.close()
 
+    def test_compact_health_when_row_available(self):
+        with tempfile.TemporaryDirectory() as root:
+            r = make_reader(Path(root))
+            try:
+                before = r.traffic.overview()
+                for width, height in ((39, 15), (69, 24), (79, 15)):
+                    for help_visible in (False, True):
+                        with self.subTest(width=width, height=height, help=help_visible):
+                            rows = panel_rows(r, 'all', 'FAIL: inactive', width,
+                                              help_visible, height=height)
+                            text = '\n'.join(t for t, _ in rows)
+                            self.assertIn('Stato: FAIL: inactive', text)
+                            self.assertIn('UNKNOWN', text)
+                            self.assertIn('q quit', text)
+                            self.assertEqual(len(rows), height)
+                            self.assertTrue(all(len(t) <= width for t, _ in rows))
+                            if not help_visible:
+                                self.assertIn('Scanner', text)
+                                self.assertIn('Selftest esclusi', text)
+                self.assertEqual(before, r.traffic.overview())
+            finally:
+                r.close()
+
     def test_configured_savings_survive_every_layout(self):
         from presentation import savings_rows
         with tempfile.TemporaryDirectory() as root:
