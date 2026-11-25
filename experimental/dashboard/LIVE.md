@@ -326,3 +326,9 @@ unused fourth detail row shows Scanner and Interne separately, alongside
 Amb and Bot UA. Empty mapped sources show N/D, not observed zero.
 Below 14 rows those extra categories remain elided; use --once for details.
 Help still replaces detail rows; this changes no aggregation or source policy.
+
+Compact cockpit health: at 15 or more terminal rows, the compact layout shows
+`Stato:` (including in help), using a spare row without replacing traffic counts,
+coverage or savings. At 14 rows and below, health remains available in `--once`
+or the full-size layout. Status is the existing probe result, not a new probe
+or a claim that log coverage is complete.
