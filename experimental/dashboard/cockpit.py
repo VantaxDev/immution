@@ -64,10 +64,17 @@ def render(reader, site, status, width, height, help_visible, baseline,
                     'Scanner %s | Interne %s' % (counts['scanner'] if requests else 'N/D', counts['internal'] if requests else 'N/D')]
         # Preserve the 14-row metrics deck; use the next spare row for health.
         show_status = height >= 15
-        for text in body[:max(0, height-10-int(show_status))]:
+        # Give both probe results a row when space permits; do not infer health.
+        # Arbitrary/demo messages remain intact on one bounded row.
+        status_rows = ['Stato: ' + status]
+        if height >= 16 and status.startswith('immution=') and ' apache2=' in status:
+            first, second = status.split(' apache2=', 1)
+            status_rows = ['Stato: ' + first, 'apache2=' + second]
+        for text in body[:max(0, height-10-(len(status_rows) if show_status else 0))]:
             line(text)
         if show_status:
-            line('Stato: ' + status, 'dim')
+            for text in status_rows:
+                line(text, 'dim')
         while len(rows) < height-2:
             line()
         edge()

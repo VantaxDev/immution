@@ -332,3 +332,15 @@ Compact cockpit health: at 15 or more terminal rows, the compact layout shows
 coverage or savings. At 14 rows and below, health remains available in `--once`
 or the full-size layout. Status is the existing probe result, not a new probe
 or a claim that log coverage is complete.
+
+### Compact service detail follow-up (26 November)
+
+At >=16 rows the compact cockpit puts Immution and Apache probe results on
+separate rows, preventing a healthy first service from hiding a failed or unknown
+second service. Both ActiveState/SubState strings are retained; this adds no
+probe or inferred health. At 15 rows the existing single bounded status row
+remains; below 15 rows status is elided. Arbitrary/demo messages stay one row.
+Long individual states can still be truncated: --once provides full detail.
+
+Backlog: compact second-service visibility implemented on the PR27 source base;
+awaiting draft review. No rollout or release gate is completed by this change.
