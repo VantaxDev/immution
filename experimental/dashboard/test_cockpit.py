@@ -1,6 +1,7 @@
 """Render contracts over synthetic fixtures; no host/service access."""
 import tempfile
 import unittest
+from unittest.mock import patch
 from pathlib import Path
 from demo_traffic import make_reader
 from presentation import panel_rows
@@ -123,6 +124,32 @@ class Cockpit(unittest.TestCase):
                     glyphs = savings_rows(4, 75, 50000, 2000)[1:4]
                     found = [any(g.strip() in t for t, style in rows if style == 'metric') for g in glyphs]
                     self.assertEqual(found, [height >= 27] * 3)
+            finally:
+                r.close()
+
+
+    def test_wide_site_labels_use_available_columns(self):
+        with tempfile.TemporaryDirectory() as root:
+            r = make_reader(Path(root))
+            try:
+                overview = r.traffic.overview()
+                entry = next(iter(overview['sites'].values()))
+                names = ['same-long-mapped-site-prefix-' + suffix + '.invalid'
+                         for suffix in ('first', 'second')]
+                overview['sites'] = {name: entry for name in names}
+                with patch.object(r.traffic, 'overview', return_value=overview):
+                    for width in (99, 119, 159):
+                        with self.subTest(width=width):
+                            rows = panel_rows(r, 'all', 'DEMO', width, height=24)
+                            text = '\n'.join(t for t, _ in rows)
+                            for name in names:
+                                self.assertIn(name, text)
+                            self.assertIn('BROWSER', text)
+                            self.assertIn('HTTP', text)
+                            self.assertEqual(len(rows), 24)
+                            self.assertTrue(all(len(t) <= width for t, _ in rows))
+                    rows = panel_rows(r, 'all', 'DEMO', 79, height=24)
+                    self.assertTrue(any(names[0][:27] + '~' in t for t, _ in rows))
             finally:
                 r.close()
 

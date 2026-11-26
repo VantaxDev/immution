@@ -119,14 +119,18 @@ def render(reader, site, status, width, height, help_visible, baseline,
     edge('SITI MAPPATI / ' + fit(site, width-25))
     if site != 'all':
         rows[-1] = (rows[-1][0], 'selected')
-    line('%-28s %9s %8s %8s %8s' % ('SITO', 'BROWSER', 'BOT/UA', 'AMBIGUI', 'HTTP'), 'section')
+    # Give extra viewport columns to names without moving baseline metrics.
+    # Keep the historical minimum at the baseline viewport.
+    name_width = 28 + max(0, width - 79)
+    site_format = '%-' + str(name_width) + 's %9s %8s %8s %8s'
+    line(site_format % ('SITO', 'BROWSER', 'BOT/UA', 'AMBIGUI', 'HTTP'), 'section')
     sites = sorted(overview['sites'].items())
     slots = 3 + max(0, height-24) - (3 if show_digits else 0)
     visible = slots if len(sites) <= slots else slots-1
     for name, entry in sites[:visible]:
         c = entry['counts']
         values = (c['browser_like'], c['declared_bot'], c['ambiguous'], entry['requests']) if entry['requests'] else ('N/D',)*4
-        line('%-28s %9s %8s %8s %8s' % (fit(name, 28), *values))
+        line(site_format % (fit(name, name_width), *values))
     used = min(len(sites), visible)
     if len(sites) > visible:
         line('+ %s siti nascosti: n/p seleziona; --once tutti' % (len(sites)-visible)); used += 1
