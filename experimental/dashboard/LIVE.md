@@ -344,3 +344,14 @@ Long individual states can still be truncated: --once provides full detail.
 
 Backlog: compact second-service visibility implemented on the PR27 source base;
 awaiting draft review. No rollout or release gate is completed by this change.
+
+### Wide mapped-site labels (26 November nightly)
+
+Full cockpit site labels now grow beyond the baseline 28 columns as terminal
+width increases past 79 usable columns. This distinguishes long mappings with
+a shared prefix without hiding numeric columns. The 79-column and compact
+layouts are unchanged; overlong names still use ~ and --once is the fallback.
+No counts, mappings, source policy or coverage semantics change.
+
+Backlog: wide-label truncation reproduced and fixed with synthetic mappings;
+awaiting draft review alongside PR14–28. No merge or rollout authorized.
