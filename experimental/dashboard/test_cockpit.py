@@ -78,6 +78,31 @@ class Cockpit(unittest.TestCase):
             finally:
                 r.close()
 
+    def test_compact_both_service_details(self):
+        with tempfile.TemporaryDirectory() as root:
+            r = make_reader(Path(root))
+            try:
+                before = r.traffic.overview()
+                for state in ('active/running', 'failed/failed', 'inactive/dead', 'unknown'):
+                    status = 'immution=active/running apache2=' + state
+                    for width, height in ((39, 16), (39, 17), (69, 24), (79, 16)):
+                        for help_visible in (False, True):
+                            with self.subTest(state=state, width=width, height=height, help=help_visible):
+                                rows = panel_rows(r, 'all', status, width, help_visible, height=height)
+                                text = '\n'.join(t for t, _ in rows)
+                                self.assertIn('immution=active/running', text)
+                                self.assertIn('apache2=' + state, text)
+                                self.assertIn('UNKNOWN', text)
+                                self.assertIn('q quit', text)
+                                self.assertEqual(len(rows), height)
+                                self.assertTrue(all(len(t) <= width and t.isascii() for t, _ in rows))
+                                if not help_visible:
+                                    for label in ('Scanner', 'Selftest esclusi', 'MB RISPARMIATI: N/D'):
+                                        self.assertIn(label, text)
+                self.assertEqual(before, r.traffic.overview())
+            finally:
+                r.close()
+
     def test_configured_savings_survive_every_layout(self):
         from presentation import savings_rows
         with tempfile.TemporaryDirectory() as root:
