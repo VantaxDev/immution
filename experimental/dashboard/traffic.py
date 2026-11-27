@@ -211,6 +211,11 @@ class Traffic:
             stamp = timestamp(stamp)
             if not self.window.key[0] <= stamp < self.window.key[1]:
                 return
+            # Validate literal log input before urlsplit can discard leading C0
+            # characters and turn malformed targets into usable page evidence.
+            # Percent escapes remain encoded here (normal Apache log output).
+            if any(ord(c) < 32 or ord(c) == 127 for c in target):
+                raise ValueError('request target control')
             target = urlsplit(target)
             # Relative origin-form only; neither absolute-form proxy nor URI hosts
             # establish which site was visited. The mapping comes from the operator.

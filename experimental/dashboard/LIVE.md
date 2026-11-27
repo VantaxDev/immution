@@ -355,3 +355,15 @@ No counts, mappings, source policy or coverage semantics change.
 
 Backlog: wide-label truncation reproduced and fixed with synthetic mappings;
 awaiting draft review alongside PR14–28. No merge or rollout authorized.
+
+### Literal request-target controls (27 November nightly)
+
+Combined records with literal ASCII control characters (C0 or DEL) in the
+request target now count as unparseable/INCOMPLETE, not usable page evidence.
+Validation runs before URL parsing, which otherwise removes leading C0 bytes.
+Normal percent-encoded targets remain accepted; no raw target is retained.
+Synthetic malformed input previously contributed to HTTP/session observations.
+
+Backlog: reproduced and fixed literal-target normalization gap on PR29 base.
+Review source/CI stack PR14–29 plus this candidate; no rollout authorized.
+This does not identify attackers or change bot classification heuristics.
