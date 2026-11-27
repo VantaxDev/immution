@@ -48,6 +48,22 @@ class TrafficTests(unittest.TestCase):
                 result[key] += value
         return result
 
+    def test_raw_target_controls_do_not_create_browser_evidence(self):
+        # urlsplit silently removes leading C0 controls; reject before parsing.
+        for path in ('\x00/about', '\x01/about', '/ab\x01out', '/about\x7f'):
+            with self.subTest(path=repr(path)):
+                self.reader.signature = None
+                self.refresh(row() + row(stamp='2026-11-06T10:00:54+00:00',
+                                         path=path, ref='https://' + SITE + '/'))
+                self.assertEqual(self.reader.issues[(SITE, 'unparseable')], 1)
+                self.assertEqual(self.totals()['browser_like'], 0)
+                self.assertEqual(sum(self.reader.summary()['records'].values()), 1)
+                self.assertIn('INCOMPLETE', '\n'.join(self.reader.report()))
+        # Percent-encoded controls are not literal malformed log characters.
+        self.refresh(visit().replace('/about?', '/about%01?'))
+        self.assertEqual(self.reader.issues[(SITE, 'unparseable')], 0)
+        self.assertEqual(self.totals()['browser_like'], 1)
+
     def test_explicit_opt_in_default_unavailable_not_gate_subtraction(self):
         r = live.Reader([])
         self.addCleanup(r.close)
